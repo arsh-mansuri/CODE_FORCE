@@ -51,8 +51,9 @@ Precedence is shell environment, then `backend/.env`, then the repository `.env`
 
 - `DATABASE_URL`: default is an absolute SQLite URL under `backend/`. An explicit
   relative SQLite URL is relative to the command's working directory.
-- `ALLOWED_ORIGINS`: comma-separated browser origins. Defaults to the two local
-  Vite origins (`localhost:5173` and `127.0.0.1:5173`).
+- `ALLOWED_ORIGINS`: comma-separated browser origins. Defaults to `localhost` and
+  `127.0.0.1` on ports `5173` and `5174` over HTTP. Restart the backend after changing
+  this setting so CORS preflight requests use the updated allowlist.
 - `SESSION_DAYS`: bearer session lifetime, 1–30 days; defaults to 7.
 - `MEDIA_ROOT`: persistent directory for media bytes; defaults to `backend/uploads/`.
   Keep this directory together with the SQLite database across server restarts.

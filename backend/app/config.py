@@ -6,12 +6,16 @@ from dotenv import load_dotenv
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_ALLOWED_ORIGINS = (
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:5174", "http://127.0.0.1:5174",
+)
 
 
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")
+    allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS
     session_days: int = 7
     media_root: Path = BACKEND_DIR / "uploads"
     max_photo_bytes: int = 10 * 1024 * 1024
@@ -35,7 +39,7 @@ class Settings:
             raise ValueError("SESSION_DAYS must be between 1 and 30")
         origins = tuple(
             value.strip() for value in os.getenv(
-                "ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+                "ALLOWED_ORIGINS", ",".join(DEFAULT_ALLOWED_ORIGINS)
             ).split(",") if value.strip()
         )
         return cls(

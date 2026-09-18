@@ -33,6 +33,7 @@ def signup_example(intent: Intent = Intent.seek_roommate, name: str = "Aarav Sha
             "property_types": ["1rk", "1bhk", "2bhk"],
             "move_in_from": start.isoformat(), "move_in_by": (start + timedelta(days=30)).isoformat(),
             "stay_months": 12,
+            "ac_required": False,
         }
     else:
         entire = intent == Intent.offer_entire_home
@@ -43,6 +44,18 @@ def signup_example(intent: Intent = Intent.seek_roommate, name: str = "Aarav Sha
             "provider_relationship": "owner" if entire else "tenant",
             "location": {"city": "Ahmedabad", "area": "Navrangpura", "pincode": "380009"},
             "monthly_rent": 24000 if entire else 11000, "deposit": 24000 if entire else 11000,
+            "electricity": (
+                {"billing_method": "actual_bill", "split": {"method": "tenant_pays_full"}}
+                if entire else
+                {"billing_method": "per_kwh", "rate_per_kwh": 8.5, "split": {"method": "equal", "split_between": 3},
+                 "notes": "The shared electricity reading excludes separately metered AC usage."}
+            ),
+            "air_conditioning": (
+                {"available": True, "locations": ["Main bedroom"], "billing_method": "included_in_electricity"}
+                if entire else
+                {"available": True, "locations": ["Offered bedroom"], "billing_method": "separate_per_kwh",
+                 "rate_per_kwh": 8.5, "split": {"method": "tenant_pays_full"}}
+            ),
             "available_from": start.isoformat(), "minimum_stay_months": 6,
             "available_spaces": 1, "furnishing": "semi_furnished", "amenities": ["balcony", "natural_light"],
             "nearby_landmarks": [

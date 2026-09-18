@@ -103,6 +103,7 @@ class HousingSearch(Schema):
     move_in_from: date = Field(description="Earliest acceptable move-in date (YYYY-MM-DD).")
     move_in_by: date = Field(description="Latest acceptable move-in date, inclusive.")
     stay_months: int = Field(ge=1, le=60, description="Planned duration, used against a listing's minimum lease.")
+    ac_required: bool = Field(default=False, description="Require an installed AC accessible to the incoming tenant. Listings with unknown or absent AC are excluded when true.")
 
     @model_validator(mode="after")
     def dates_in_order(self):
@@ -197,6 +198,86 @@ class NearbyLandmark(Schema):
     distance_km: float = Field(ge=0, le=100, description="Provider-declared distance; not independently geocoded or verified.")
 
 
+class BillSplitPolicy(Schema):
+    method: Literal["equal", "metered_usage", "fixed_percentage", "tenant_pays_full", "custom"] = Field(
+        description="How the relevant electricity/AC charge is allocated. Tenant means the incoming person for a room, or the renting household for an entire home."
+    )
+    split_between: int | None = Field(default=None, ge=2, le=100, description="For equal: total paying people/households, including the incoming tenant. Not the number of vacant spaces.")
+    tenant_share_percentage: float | None = Field(default=None, gt=0, le=100, multiple_of=0.01, description="For fixed_percentage: the incoming tenant's share of this bill, e.g. 25 means 25%.")
+    custom_details: str | None = Field(default=None, min_length=1, max_length=500, description="Required for custom: explain the agreed split in plain language.")
+
+    @model_validator(mode="after")
+    def consistent_split(self):
+        required = {"equal": "split_between", "fixed_percentage": "tenant_share_percentage", "custom": "custom_details"}.get(self.method)
+        for name in ("split_between", "tenant_share_percentage", "custom_details"):
+            value = getattr(self, name)
+            if name == required and value is None:
+                raise ValueError(f"{self.method} splitting requires {name}.")
+            if name != required and value is not None:
+                raise ValueError(f"{name} is not used with {self.method} splitting.")
+        return self
+
+
+class ElectricityBilling(Schema):
+    billing_method: Literal["included_in_rent", "fixed_monthly", "per_kwh", "actual_bill"]
+    rate_per_kwh: Money | None = Field(default=None, description="For per_kwh: quoted INR per kWh (one electricity unit), before applying the split.")
+    fixed_monthly_amount: Money | None = Field(default=None, description="For fixed_monthly: total monthly INR electricity charge before applying the split.")
+    split: BillSplitPolicy | None = Field(default=None, description="Required unless electricity is included in rent. Applies only to the charge described in this section.")
+    notes: str | None = Field(default=None, min_length=1, max_length=500, description="Optional tariff/fixed-fee explanation. actual_bill follows the provider's bill, including its slab rates and fees.")
+
+    @model_validator(mode="after")
+    def consistent_billing(self):
+        required = {"per_kwh": "rate_per_kwh", "fixed_monthly": "fixed_monthly_amount"}.get(self.billing_method)
+        for name in ("rate_per_kwh", "fixed_monthly_amount"):
+            value = getattr(self, name)
+            if name == required and value is None:
+                raise ValueError(f"{self.billing_method} electricity billing requires {name}.")
+            if name != required and value is not None:
+                raise ValueError(f"{name} is not used with {self.billing_method} electricity billing.")
+        if self.billing_method == "included_in_rent":
+            if self.split is not None:
+                raise ValueError("Electricity included in rent has no additional bill to split.")
+        elif self.split is None:
+            raise ValueError("Specify how the additional electricity charge is split.")
+        return self
+
+
+class AirConditioning(Schema):
+    available: bool = Field(description="Is an AC installed and accessible to the incoming tenant? AC only in another resident's private room does not count.")
+    locations: list[ShortText] = Field(default_factory=list, max_length=20, description="Where the accessible AC is installed, e.g. offered bedroom or shared living room.")
+    billing_method: Literal["included_in_rent", "included_in_electricity", "separate_per_kwh", "separate_per_hour", "separate_fixed_monthly"] | None = None
+    rate_per_kwh: Money | None = Field(default=None, description="For separate_per_kwh: INR per metered AC kWh, before applying the AC split.")
+    rate_per_hour: Money | None = Field(default=None, description="For separate_per_hour: INR per recorded AC operating hour, before applying the AC split.")
+    fixed_monthly_amount: Money | None = Field(default=None, description="For separate_fixed_monthly: total monthly INR AC charge before applying the AC split.")
+    split: BillSplitPolicy | None = Field(default=None, description="Required for separate AC billing. Otherwise AC follows the main electricity policy or is included in rent.")
+    notes: str | None = Field(default=None, min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def consistent_ac(self):
+        rate_fields = ("rate_per_kwh", "rate_per_hour", "fixed_monthly_amount")
+        if not self.available:
+            if self.locations or self.billing_method is not None or self.split is not None or any(getattr(self, name) is not None for name in rate_fields):
+                raise ValueError("When AC is unavailable, omit AC locations, billing method, rates, and split.")
+            return self
+        if self.billing_method is None:
+            raise ValueError("When AC is available, specify whether its use is included or charged separately.")
+        required = {
+            "separate_per_kwh": "rate_per_kwh", "separate_per_hour": "rate_per_hour",
+            "separate_fixed_monthly": "fixed_monthly_amount",
+        }.get(self.billing_method)
+        for name in rate_fields:
+            value = getattr(self, name)
+            if name == required and value is None:
+                raise ValueError(f"{self.billing_method} AC billing requires {name}.")
+            if name != required and value is not None:
+                raise ValueError(f"{name} is not used with {self.billing_method} AC billing.")
+        if required and self.split is None:
+            raise ValueError("Specify who pays the separate AC charge and how it is split.")
+        if not required and self.split is not None:
+            raise ValueError("AC included in rent or the electricity bill has no separate split policy.")
+        return self
+
+
 class ListingInput(Schema):
     title: str = Field(min_length=3, max_length=160)
     description: str = Field(default="", max_length=3000)
@@ -206,6 +287,8 @@ class ListingInput(Schema):
     location: ListingLocation
     monthly_rent: Money = Field(gt=0, description="INR for the entire tenancy if entire_home; per incoming person otherwise.")
     deposit: Money = 0
+    electricity: ElectricityBilling | None = Field(default=None, description="Electricity rate and bill-splitting agreement. Null means not disclosed, not free. Exclude any separately charged AC consumption from this charge.")
+    air_conditioning: AirConditioning | None = Field(default=None, description="AC availability and charging terms. Null means not disclosed; available=false explicitly means no accessible AC.")
     available_from: date
     minimum_stay_months: int = Field(default=1, ge=1, le=60)
     available_spaces: int = Field(default=1, ge=1, le=20, description="Incoming-person capacity for shared homes; 1 tenancy for an entire home.")
@@ -347,7 +430,7 @@ class ErrorResponse(Schema):
 class HealthResponse(Schema):
     status: Literal["ok"] = "ok"
     database: Literal["connected"] = "connected"
-    version: str = "0.2.0"
+    version: str = "0.3.0"
 
 
 class Notice(Schema):
@@ -554,6 +637,7 @@ class Question(Schema):
     help_text: str
     input_type: Literal["text", "number", "date", "single_choice", "multi_choice", "boolean", "scale", "object", "list", "password", "email", "photos", "video"]
     required: bool = False
+    show_when: dict[str, list[str | bool]] = Field(default_factory=dict, description="Show this question only when every referenced form path matches one of its listed values. Requiredness applies when shown, within applies_to intents.")
     applies_to: list[Intent] = Field(default_factory=lambda: list(Intent))
     options: list[QuestionOption] = Field(default_factory=list)
     used_for: list[str] = Field(default_factory=list)
@@ -572,7 +656,7 @@ class QuestionSection(Schema):
 
 
 class Questionnaire(Schema):
-    version: str = "1.1"
+    version: str = "1.2"
     introduction: str
     sections: list[QuestionSection]
     validation_schema: str = "/openapi.json#/components/schemas/SignupRequest"

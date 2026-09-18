@@ -81,9 +81,13 @@ def home_fits(seeker: UserProfileInput, provider: User) -> tuple[bool, list[str]
         return False, []
     if home.minimum_stay_months > search.stay_months:
         return False, []
+    if search.ac_required and (home.air_conditioning is None or not home.air_conditioning.available):
+        return False, []
     if any(p.importance == "required" and not landmark_matches(p, home) for p in search.location.nearby):
         return False, []
     reasons = ["Home is in your requested location and rent range.", "Move-in timing and minimum stay fit."]
+    if search.ac_required:
+        reasons.append("An installed AC is available to the incoming tenant, as requested.")
     for preference in search.location.nearby:
         if landmark_matches(preference, home):
             reasons.append(f"Within {preference.max_distance_km:g} km of {preference.name or preference.kind.value.replace('_', ' ')} (provider-declared).")
@@ -157,6 +161,8 @@ def compatibility(viewer: User, candidate: User) -> Compatibility | None:
         if not searches_overlap(a, b):
             return None
         reasons = ["Shared search area, budget, property types, and move-in window."]
+        if a.search.ac_required or b.search.ac_required:
+            reasons.append("AC access is required when you choose a property together.")
         if any(p.importance == "required" for s in (a.search, b.search) for p in s.location.nearby):
             reasons.append("Required landmark distances must be checked when you choose a property together.")
         shared = True
@@ -193,6 +199,16 @@ def candidate_view(user: User, score: Compatibility) -> Candidate:
             label=f"{offering.location.area}, {offering.location.city}", kind="property",
         )
         badges = [offering.property_type.value.upper(), offering.kind.replace("_", " "), offering.furnishing.replace("_", " ")]
+        if offering.air_conditioning is None:
+            badges.append("AC not specified")
+        elif offering.air_conditioning.available:
+            badges.append("AC available")
+            if offering.air_conditioning.billing_method.startswith("separate_"):
+                badges.append("AC billed separately")
+        else:
+            badges.append("No AC")
+        if offering.electricity and offering.electricity.billing_method == "included_in_rent":
+            badges.append("Electricity included")
     else:
         # Existing matches may still show a paused property card; its declared
         # locality remains available without claiming a search location.

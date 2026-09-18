@@ -56,6 +56,9 @@ preferences, offering, and media sections. Each question includes:
 - `prompt` / `help_text`: nonjudgmental text suitable for a form.
 - `input_type`, `options`, and `required`.
 - `applies_to`: the intents that should see it. Requiredness applies only then.
+- `show_when`: conditional form visibility. Every referenced field path must match
+  one of its listed values before showing the question or enforcing its `required`
+  flag. For example, ask for an electricity unit rate only after `per_kwh` is selected.
 - `used_for`: routing, hard filters, cosine, Irving rankings, or rent preparation.
 - Media prompts also provide `upload_endpoint`, `minimum_files`, `maximum_files`,
   `accepted_types`, `max_file_bytes`, and `max_duration_seconds` where applicable.
@@ -174,7 +177,7 @@ lifestyle answers, an optional offering, and these card-friendly fields:
   Property offers show property media here; seekers show their personal media.
 - `profile_media`: the person's gallery, also available on property cards.
 - `budget`: the seeker's rent range, or null for providers. Offered rent, deposit,
-  layout, and amenities live in `offering`.
+  layout, amenities, `electricity`, and `air_conditioning` live in `offering`.
 - `badges`: short lifestyle/property labels suitable for overlays.
 
 Scores remain entirely requirements-based; photos and videos are presentation
@@ -228,6 +231,11 @@ after a pass; the people feed hides previous swipes by default.
 - Offered rent must fit the seeker's range; layout must be selected; availability
   must be on/before their latest move-in date. A home available earlier may wait
   until the person's earliest date. Planned stay must meet minimum lease length.
+- `profile.search.ac_required` defaults to false. When true, properties need
+  `air_conditioning.available=true`; missing information and `available=false`
+  are excluded. This means installed AC the incoming tenant can access; inspect
+  `locations` to see whether it is in the bedroom or a shared space. For two people
+  searching together, AC is recorded as a requirement for their future home.
 - Smoking/pet restrictions and explicit gender/diet choices apply in **both**
   directions for shared living. An undisclosed value is never guessed to satisfy
   a specific disclosed gender/diet choice. Whole-home landlords' lifestyle and
@@ -241,6 +249,93 @@ after a pass; the people feed hides previous swipes by default.
   connections are deactivated, including when a listing is paused.
 - First-time offering creation or changing whole/shared intent is done with
   `PUT /users/me`, so profile intent and listing kind change together.
+
+### Electricity split, rates, and AC
+
+Supply these structured fields in `offering` during signup/profile replacement,
+or in the listing body for **PUT `/listings/me`**. They persist with the listing
+and appear in `/list` → `items[].offering`, `/listings` → `items[].listing`,
+`/listings/{id}`, `/listings/me`, and `/users/me` → `offering`.
+
+Example: electricity at ₹8.50 per unit shared by three payers, with an installed
+bedroom AC charged separately at ₹20 per operating hour to its user:
+
+```json
+{
+  "electricity": {
+    "billing_method": "per_kwh",
+    "rate_per_kwh": 8.5,
+    "split": {
+      "method": "equal",
+      "split_between": 3
+    },
+    "notes": "The shared electricity reading excludes separately charged AC use."
+  },
+  "air_conditioning": {
+    "available": true,
+    "locations": ["Offered bedroom"],
+    "billing_method": "separate_per_hour",
+    "rate_per_hour": 20,
+    "split": {
+      "method": "tenant_pays_full"
+    }
+  }
+}
+```
+
+These are fields to include in the complete existing listing payload, not a new
+partial-update endpoint. All quoted rates/amounts are **INR before applying their
+split policy**. An electricity unit is **1 kWh**.
+
+**Main electricity billing:**
+
+- `included_in_rent`: no extra electricity charge; omit rates, amount, and split.
+- `fixed_monthly`: supply `fixed_monthly_amount` and `split`.
+- `per_kwh`: supply `rate_per_kwh` and `split`.
+- `actual_bill`: follow the actual utility bill (including its slab tariffs and
+  fees), with an explicit `split`; no invented flat unit rate is needed.
+
+**How the charge is split** (`BillSplitPolicy`, reused for separate AC charges):
+
+- `equal`: supply `split_between`, the total number of payers including the incoming
+  tenant, at least two. This is not the number of vacant beds/rooms.
+- `metered_usage`: each payer pays for their individually measured usage.
+- `fixed_percentage`: supply `tenant_share_percentage`, greater than 0 and up to 100.
+- `tenant_pays_full`: the incoming tenant pays the entire applicable charge.
+- `custom`: supply a nonblank `custom_details` explanation.
+
+For room listings, **tenant** means the incoming person; for whole-home listings it
+means the renting household. When a fixed monthly amount already represents the
+tenant's individual charge, use `tenant_pays_full` so it is not divided again.
+Fields belonging to a different split method are rejected rather than ignored.
+
+**AC availability and billing:**
+
+- `air_conditioning: null` means not disclosed. It must not display as “No AC.”
+- `{ "available": false }` explicitly means no installed AC accessible to the
+  incoming tenant. Billing, location, and rate fields must be omitted or empty/null.
+- When `available=true`, specify `billing_method` and optionally `locations`.
+- `included_in_rent`: no additional AC charge.
+- `included_in_electricity`: AC follows the main electricity policy, without a
+  separate AC rate or split.
+- `separate_per_kwh`: supply `rate_per_kwh` and an AC `split`.
+- `separate_per_hour`: supply `rate_per_hour` and an AC `split`.
+- `separate_fixed_monthly`: supply `fixed_monthly_amount` and an AC `split`.
+
+The main electricity charge describes the portion **excluding separately charged
+AC consumption**; do not bill the same usage twice. Non-AC electricity can be
+included in rent while AC is separately charged. Optional `notes` explain either
+policy. Contradictory states (such as no AC plus an hourly AC charge), missing
+applicable rates, negative amounts, and ambiguous split fields return 422.
+
+Both new listing fields are optional for backward compatibility. Omitted fields
+on older listings return null, meaning **not disclosed**, never “free” or “no AC.”
+Cards expose badges such as `AC available`, `AC billed separately`, `No AC`,
+`AC not specified`, and `Electricity included`, based on the disclosed terms.
+
+These are billing agreements, not a meter-reading ledger or a computed invoice.
+Usage-dependent charges cannot be converted into a total monthly cost until usage
+is known. Existing rent budgets and Rent Harmony remain rent-only.
 
 ## 5. Double-opt-in connections and chat
 

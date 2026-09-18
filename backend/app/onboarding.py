@@ -15,12 +15,31 @@ def options(values):
     return [QuestionOption(value=v, label=v.replace("_", " ").capitalize()) for v in values]
 
 
-def q(field, prompt, kind, help_text, *, required=False, applies_to=None, choices=(), used_for=()):
+def q(field, prompt, kind, help_text, *, required=False, applies_to=None, choices=(), used_for=(), show_when=None):
     return Question(
         field=field, prompt=prompt, input_type=kind, help_text=help_text, required=required,
         applies_to=ALL if applies_to is None else applies_to,
         options=options(choices), used_for=list(used_for),
+        show_when=show_when or {},
     )
+
+
+def split_questions(path, show_when):
+    return [
+        q(f"{path}.method", "How will this charge be shared?", "single_choice",
+          "Choose equal shares, individual metered usage, a fixed percentage, the full charge paid by the tenant, or a described custom agreement. For a whole home, tenant means the renting household; for a room, it means the incoming person.",
+          required=True, applies_to=OFFER, choices=("equal", "metered_usage", "fixed_percentage", "tenant_pays_full", "custom"),
+          show_when=show_when, used_for=["utility_cost_transparency"]),
+        q(f"{path}.split_between", "How many people or households share this bill equally?", "number",
+          "Count all payers, including the incoming tenant, not just the vacant spaces. Use tenant_pays_full for a single payer.",
+          required=True, applies_to=OFFER, show_when={**show_when, f"{path}.method": ["equal"]}, used_for=["utility_cost_transparency"]),
+        q(f"{path}.tenant_share_percentage", "What percentage does the incoming tenant pay?", "number",
+          "A value above 0 and up to 100; for example, 25 means one quarter of this charge.",
+          required=True, applies_to=OFFER, show_when={**show_when, f"{path}.method": ["fixed_percentage"]}, used_for=["utility_cost_transparency"]),
+        q(f"{path}.custom_details", "How does your agreed split work?", "text",
+          "Describe who pays which part so the incoming tenant can understand the arrangement.",
+          required=True, applies_to=OFFER, show_when={**show_when, f"{path}.method": ["custom"]}, used_for=["utility_cost_transparency"]),
+    ]
 
 
 def questionnaire(settings: Settings) -> Questionnaire:
@@ -46,6 +65,7 @@ def questionnaire(settings: Settings) -> Questionnaire:
             q("profile.search.move_in_from", "What's your earliest move-in date?", "date", "YYYY-MM-DD.", required=True, applies_to=SEEK, used_for=["hard_filter"]),
             q("profile.search.move_in_by", "What's your latest comfortable move-in date?", "date", "Must be on or after your earliest date.", required=True, applies_to=SEEK, used_for=["hard_filter"]),
             q("profile.search.stay_months", "How many months do you expect to stay?", "number", "1–60 months; checked against minimum lease length.", required=True, applies_to=SEEK, used_for=["hard_filter"]),
+            q("profile.search.ac_required", "Do you need access to an installed air conditioner?", "boolean", "Optional; defaults to false. If true, homes without confirmed accessible AC are excluded. For a roommate search, this is a requirement for the home you will choose together.", applies_to=SEEK, used_for=["hard_filter"]),
         ]),
     ]
     lifestyle = [
@@ -91,6 +111,47 @@ def questionnaire(settings: Settings) -> Questionnaire:
     sections.append(QuestionSection(id="offering", title="The home or space you're offering", questions=[
         q(f"offering.{field}", prompt, kind, help_text, required=required, applies_to=OFFER, choices=choices, used_for=["listing_discovery"])
         for field, prompt, kind, help_text, required, choices in offering
+    ]))
+    electricity = "offering.electricity"
+    ac = "offering.air_conditioning"
+    electric_charge = {f"{electricity}.billing_method": ["per_kwh", "fixed_monthly", "actual_bill"]}
+    separate_ac = {f"{ac}.available": [True], f"{ac}.billing_method": ["separate_per_kwh", "separate_per_hour", "separate_fixed_monthly"]}
+    sections.append(QuestionSection(id="electricity_and_ac", title="Electricity and cooling costs", questions=[
+        q(f"{electricity}.billing_method", "How is electricity charged?", "single_choice",
+          "Included in rent, a fixed monthly charge, a quoted per-unit rate, or the actual utility bill. If not yet known, omit electricity rather than imply it is free. Separately billed AC consumption must be excluded from this charge.",
+          applies_to=OFFER, choices=("included_in_rent", "fixed_monthly", "per_kwh", "actual_bill"), used_for=["utility_cost_transparency"]),
+        q(f"{electricity}.rate_per_kwh", "What electricity rate applies per unit?", "number",
+          "INR per kWh; one electricity unit is one kWh. This is the rate before the bill is split.",
+          required=True, applies_to=OFFER, show_when={f"{electricity}.billing_method": ["per_kwh"]}, used_for=["utility_cost_transparency"]),
+        q(f"{electricity}.fixed_monthly_amount", "What is the fixed monthly electricity charge?", "number",
+          "Total monthly INR amount before splitting. If this is already the incoming person's charge, choose tenant_pays_full.",
+          required=True, applies_to=OFFER, show_when={f"{electricity}.billing_method": ["fixed_monthly"]}, used_for=["utility_cost_transparency"]),
+        *split_questions(f"{electricity}.split", electric_charge),
+        q(f"{electricity}.notes", "Is there anything else to explain about the electricity bill?", "text",
+          "Optional tariff or fixed-fee details. actual_bill follows the actual utility bill, which may use slab rates rather than one flat rate.",
+          applies_to=OFFER, show_when={f"{electricity}.billing_method": ["included_in_rent", "fixed_monthly", "per_kwh", "actual_bill"]}, used_for=["utility_cost_transparency"]),
+        q(f"{ac}.available", "Is an air conditioner installed and available to the incoming tenant?", "boolean",
+          "Answer yes only for AC they can actually use. Leave this unset if unknown; false explicitly means no accessible AC.",
+          applies_to=OFFER, used_for=["property_details", "hard_filter"]),
+        q(f"{ac}.locations", "Where can the incoming tenant use the AC?", "list",
+          "For example: offered bedroom or shared living room.", applies_to=OFFER, show_when={f"{ac}.available": [True]}, used_for=["property_details"]),
+        q(f"{ac}.billing_method", "Is AC use included, or charged separately?", "single_choice",
+          "Choose included in rent, part of the main electricity bill, or a separate rate per kWh, operating hour, or month.",
+          required=True, applies_to=OFFER, choices=("included_in_rent", "included_in_electricity", "separate_per_kwh", "separate_per_hour", "separate_fixed_monthly"),
+          show_when={f"{ac}.available": [True]}, used_for=["utility_cost_transparency"]),
+        q(f"{ac}.rate_per_kwh", "What separate AC rate applies per unit?", "number",
+          "INR per metered AC kWh, before applying the AC split. Exclude these units from the main electricity charge.",
+          required=True, applies_to=OFFER, show_when={f"{ac}.available": [True], f"{ac}.billing_method": ["separate_per_kwh"]}, used_for=["utility_cost_transparency"]),
+        q(f"{ac}.rate_per_hour", "What does an hour of AC use cost?", "number",
+          "INR per recorded AC operating hour, before applying the AC split.", required=True, applies_to=OFFER,
+          show_when={f"{ac}.available": [True], f"{ac}.billing_method": ["separate_per_hour"]}, used_for=["utility_cost_transparency"]),
+        q(f"{ac}.fixed_monthly_amount", "What is the separate monthly AC charge?", "number",
+          "Total monthly INR amount before applying the AC split.", required=True, applies_to=OFFER,
+          show_when={f"{ac}.available": [True], f"{ac}.billing_method": ["separate_fixed_monthly"]}, used_for=["utility_cost_transparency"]),
+        *split_questions(f"{ac}.split", separate_ac),
+        q(f"{ac}.notes", "Any other cooling details the tenant should know?", "text",
+          "Optional details about the equipment or how usage is recorded.", applies_to=OFFER,
+          show_when={f"{ac}.available": [True, False]}, used_for=["property_details"]),
     ]))
     sections.append(QuestionSection(id="media", title="Bring your profile and home to life", questions=[
         Question(

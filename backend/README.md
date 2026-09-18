@@ -1,0 +1,304 @@
+# PropVibe FastAPI backend
+
+A working, local-first MVP for intent-based housing and roommate discovery.
+This guide describes the implemented backend contract. The project vision in
+`SOUL.md` and `README 2.md` also includes longer-term frontend and AI features.
+
+## Start locally
+
+Use **Python 3.10+**; this implementation is tested with Python **3.12**.
+Python 3.9's annotation support is insufficient for this backend.
+
+From the repository root:
+
+```bash
+cd backend
+uv venv --python 3.12
+uv pip install -r requirements.txt
+uv run --no-project python seed_db.py
+uv run --no-project uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Or with an installed Python 3.12 and pip:
+
+```bash
+cd backend
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python seed_db.py
+uvicorn main:app --reload --port 8000
+```
+
+On Windows, activate with `.venv\Scripts\activate`.
+
+- Swagger / Try it out: **http://localhost:8000/docs**
+- ReDoc: **http://localhost:8000/redoc**
+- OpenAPI JSON: **http://localhost:8000/openapi.json**
+- Database-aware health check: **http://localhost:8000/api/health**
+
+The default database is `backend/propvibe.db`, created on startup. No external
+database, geocoder, LLM, or API key is needed. Seeding is optional and explicit.
+Application startup never inserts demo accounts automatically.
+Uploaded images/videos and generated thumbnails live in `backend/uploads/` by
+default. Pillow processes images and PyAV validates videos using packaged FFmpeg
+libraries; no separate FFmpeg executable is required with the standard wheels.
+
+### Configuration
+
+The optional root `.env.example` can be copied to `backend/.env` and edited.
+Precedence is shell environment, then `backend/.env`, then the repository `.env`.
+
+- `DATABASE_URL`: default is an absolute SQLite URL under `backend/`. An explicit
+  relative SQLite URL is relative to the command's working directory.
+- `ALLOWED_ORIGINS`: comma-separated browser origins. Defaults to the two local
+  Vite origins (`localhost:5173` and `127.0.0.1:5173`).
+- `SESSION_DAYS`: bearer session lifetime, 1–30 days; defaults to 7.
+- `MEDIA_ROOT`: persistent directory for media bytes; defaults to `backend/uploads/`.
+  Keep this directory together with the SQLite database across server restarts.
+- `HOST` / `PORT` in the template are hints; use Uvicorn's `--host` / `--port` flags.
+- The reserved Gemini/Groq variables are unused in this MVP. Lease review is
+  explicitly labelled `local_heuristic`.
+
+SQLAlchemy also accepts `postgresql+psycopg://...` when `psycopg[binary]` is
+installed. Automated verification here uses SQLite, not a live PostgreSQL server.
+Tables are created with `create_all`; schema migrations are not included yet.
+
+## Five signup paths
+
+`GET /api/onboarding/questions` gives neutral prompts, field paths, applicability,
+answer choices, and links to the authoritative validation schema.
+
+- **`seek_entire_home`**: an empty home/whole tenancy, including studio, 1RK,
+  1BHK, 2BHK, 3BHK, and 4BHK+. Requires housing search answers.
+- **`seek_room`**: join someone who already has a home and an available room or
+  shared space. Requires housing search and lifestyle answers.
+- **`seek_roommate`**: find a person to search for a home together. Requires
+  housing search and lifestyle answers. This is the Irving cohort persona.
+- **`offer_entire_home`**: offer one whole home as its owner or current tenant.
+  Requires an offering; personal lifestyle answers are optional and not ranked.
+- **`offer_shared_home`**: a resident owner/tenant offering a private room or
+  shared space. Requires an offering and lifestyle answers for living together.
+
+One primary intent and one offering per account keep the MVP unambiguous.
+`PUT /api/users/me` can change intent and replace the complete onboarding data
+atomically. Account creation validates all conditional housing/lifestyle answers;
+media is the authenticated second step of onboarding. New and existing accounts
+need complete photo galleries before appearing in discovery or sending new likes.
+
+### What the questions capture
+
+- Location: city, alternative neighbourhoods/PIN codes, optional named landmarks,
+  maximum proximity distances, and preferred versus required proximity.
+- Practical fit: INR rent range, flat layout, move-in window, stay duration,
+  owner/tenant relationship, offered rent, deposit, furnishing, and availability.
+- Shared living: tidiness, social energy, guests, noise, sleep, work/study routine,
+  food routine, smoking, and pets; explicit mutual household requirements.
+- Room preferences: initial importance of size, private bath, balcony, natural
+  light, and quiet, to prepare users for room-specific rent valuations later.
+- Media: **3–6 photos of the person**, plus **3–6 photos of the home** for providers;
+  an optional introduction video and an optional property walkthrough.
+
+Prompts describe preferences without calling one lifestyle better. Gender can
+be undisclosed; an empty acceptable-gender list means open to anyone. Proximity to
+a Jain derasar, mosque, temple, or other landmark never becomes an inferred
+religion or a lifestyle-vector dimension. Food routines are self-reported and
+independent of landmark preferences.
+
+## Photo-first onboarding and swipe cards
+
+1. Submit signup JSON and keep the bearer token. The response's
+   `user.onboarding` lists the remaining photo steps.
+2. Upload 3–6 distinct photos to `POST /api/media/profile/photos` using multipart
+   field `files`. Providers also upload 3–6 photos to `/api/media/property/photos`.
+   You can upload one photo at a time or send an entire gallery in one batch.
+3. Optionally upload one video per gallery to `/api/media/profile/video` or
+   `/api/media/property/video` using field `file`.
+4. Once `onboarding.complete` is true, call **GET `/api/list`** for the swipe deck.
+
+Each card includes `match_score` (0–100), name, property title where relevant,
+display location, budget/rent details, lifestyle badges, ordered photos, a cover,
+thumbnails, and optional video/poster metadata. A property provider's main gallery
+shows the home; `profile_media` also shows the person. A seeker's location is
+explicitly labelled as their preferred search location, not their current address.
+`/api/users/feed` is an alias, and `/api/listings` also exposes a direct match score.
+
+Scores come from housing requirements and lifestyle compatibility. Photo count,
+video presence, and physical appearance are not scoring inputs. The API filters
+out incomplete galleries before ranking and supports `min_match_score`, `limit`,
+`offset`, `has_more`, and `next_offset` for the client to load more cards.
+
+- Photos: JPEG/PNG/WebP, **10 MiB each**, minimum 160×160 px, at most 20 megapixels.
+  Normalised JPEG output is oriented, resized to at most 2048 px, and stripped of
+  EXIF metadata. A separate 480 px thumbnail is created.
+- Video: MP4/H.264 or WebM/VP8/VP9, **50 MiB**, **60 seconds**, at most 1080p/60 fps,
+  standard 8-bit 4:2:0 pixels. Audio supports AAC/MP3 in MP4 and Opus/Vorbis in WebM.
+  Container/codec/metadata and a decoded first frame are checked; no transcoding
+  service is needed. A poster is generated and playback supports HTTP byte ranges.
+- Gallery controls: choose the cover by ordering photo IDs, edit accessible
+  captions, delete media, or replace the optional video. Writes are owner-only.
+- Uploaded media has public opaque-ID URLs suitable for image/video tags. Resolve
+  returned `/api/media/files/...` paths against the backend origin.
+- Dropping below three photos hides the account from discovery and blocks new
+  positive swipes until fixed. Existing mutually approved conversations continue.
+
+The complete multipart flow and frontend request examples are in [API.md](API.md#9-photo-and-video-upload-api).
+
+## Five-minute demo
+
+Run `python seed_db.py` once. It creates these demo-only accounts:
+
+- `demo1@example.com` through `demo4@example.com`: people searching together.
+  These four newly seeded accounts have mutual likes and active connections.
+- `demo5@example.com`: looking to join an existing flatshare.
+- `demo6@example.com`: tenant offering one room in a 2BHK.
+- `demo7@example.com`: looking for an entire home.
+- `demo8@example.com`: owner offering an entire 2BHK.
+
+**Demo-only password:** `PropVibe-demo-2026`.
+
+The seed command leaves existing accounts and their choices unchanged on reruns.
+Only newly created roommate accounts are connected to one another.
+New demo accounts include three locally generated, clearly labelled **demo
+illustrations** per required gallery, so the demo works offline. These are not
+represented as genuine person/property photographs. To add them to entirely empty
+galleries of accounts created before media support, run:
+
+```bash
+python seed_db.py --fill-missing-media
+```
+
+Existing uploads, profiles, and swipe choices are preserved.
+
+1. Open `/docs`, inspect `/api/onboarding/questions`, and try a signup example.
+   All five JSON payloads are in Swagger's example dropdown. For a new account,
+   authorize with its token and complete the required photo uploads next.
+2. Log in as `demo5@example.com`. Copy `access_token`, click **Authorize**, and
+   paste it without adding the word `Bearer`.
+3. Get `/api/list` and `/api/listings`. The offered room appears with photos,
+   name/location, a match score, and compatibility explanations. Like the
+   offering's `owner_id` via `/api/swipe`.
+4. Log in and authorize as `demo6@example.com`, then like demo5's ID. A match ID
+   is returned. Post/read `/api/matches/{match_id}/messages`.
+5. Log in as demo1, read `/api/matches`, and send all four roommate user IDs
+   (including demo1) to `/api/matching/stable`.
+6. Try the `/api/rent-harmony/calculate` example. Inspect total rent, room
+   allocation, max envy, tolerance, method, and affordability.
+7. Try `/api/lease/analyze` to see the offline risk-discussion fallback.
+
+Seeded roommate feeds are empty by default because they have already swiped on
+one another. Use `/api/users/feed?include_seen=true` to display those cards.
+
+## How the algorithms are used
+
+### Weighted vector cosine
+
+Eligibility is evaluated **before** numerical ranking:
+
+1. Complementary intent (`seek_room` ↔ `offer_shared_home`, whole-home seeker ↔
+   provider, or two `seek_roommate` profiles).
+2. City/locality, budget, property types, move-in compatibility, lease duration
+   where applicable, and required property landmark proximity.
+3. Bilateral shared-household requirements, including explicitly selected gender,
+   smoking, pets, and food routines.
+
+Eligible shared-living profiles are encoded into feature blocks. A 1–5 scalar
+becomes a unit-normalised `[x, 1-x]` block, where `x=(answer-1)/4`; categorical
+answers become one-hot blocks. Both vectors' blocks are multiplied by the square
+root of the viewing person's importance weight, then cosine is calculated.
+This avoids falsely treating all-1 and all-5 scalar profiles as identical merely
+because their unexpanded vectors are proportional. All-zero weights are rejected.
+
+Scores are rankings, not probabilities of a successful relationship. Each viewer
+can rank the same pair differently because their weights can differ. Whole-home
+rentals use a separate housing-fit score, never landlord personality similarity.
+
+### Irving stable roommates
+
+`app/algorithms.py` implements proposal reduction and rotation elimination,
+followed by a blocking-pair certificate check. It accepts strict, symmetric,
+possibly incomplete preference lists. The API derives rankings from cosine scores
+and mutual approved edges, breaking equal scores by ascending user UUID.
+
+The API accepts an even cohort of 2–20 people searching together. The requester
+must be included and actively connected to every other participant. Each actual
+pair also needs its own mutual likes and bilateral eligibility. The result is
+either a stable **perfect** pairing or `no_stable_matching`; no partial fallback
+is falsely labelled stable. The calculation proposes arrangements and does not
+create connections or messages.
+
+### Sperner-style discrete rent approximation
+
+Signup's room priorities prepare the conversation. Once actual rooms are known,
+each person supplies a value for **every room in INR/month**. These final
+valuations, not identity, determine utility: `value(person, room) - room_price`.
+Room amenity labels and signup priorities are not automatically converted to
+rupee values; the people involved decide those trade-offs.
+
+The solver supports **2 or 3 rooms and an equal number of people**. It builds a
+balanced-owner triangulation of the nonnegative price simplex, labels vertices
+with owners' favourite rooms, and evaluates fully labelled cells at their
+barycentres. It also evaluates all grid-vertex assignments, including boundaries,
+as a fallback. Work is bounded by a resolution of 4–100.
+
+Arbitrary quasilinear valuations need not satisfy Sperner's boundary assumptions;
+nonnegative envy-free prices are not guaranteed. Responses expose the selected
+method, fully labelled cell count, resolution, actual max envy, and requested
+tolerance. `envy_free_within_tolerance` means precisely that measured test passed;
+otherwise the result is `approximate`. Budgets are a separate reported check.
+Prices are rounded to paise while preserving the total exactly.
+
+## Persistence and authentication
+
+SQLAlchemy tables: `users`, `profiles`, `listings`, `media_assets`, `auth_sessions`,
+`swipes`, `matches`, `messages`, and `rent_sessions`. Identity and transactional entities
+use foreign keys and unique constraints; nested onboarding/listing value objects
+are validated Pydantic JSON documents in their own one-to-one tables.
+
+Passwords use salted PBKDF2-SHA256 with 600,000 iterations. Sessions use random
+opaque bearer tokens; only SHA-256 token hashes and UTC expiry timestamps are
+stored. Logout revokes the current session. Public discovery DTOs exclude email,
+credentials, detailed search constraints, and preference weights. Cards explicitly
+share preferred locality and budget to help selection. Messaging requires
+an active mutual match; rent sessions are private to their creator.
+
+The default run survives server restarts without a session signing key. Input
+errors omit raw request bodies so passwords are not echoed by validation errors.
+
+## Verify
+
+From `backend/`:
+
+```bash
+uv run --no-project python -m pytest -q
+```
+
+Tests cover all signup personas, invalid-request rollback, privacy/authentication,
+bilateral eligibility, landmark constraints, mutual/repeated/concurrent swipes,
+chat access, paused listings, intent changes, rent ownership, Swagger, and restart
+persistence. Algorithm checks compare Irving against exhaustive pairing search
+for all 1,296 complete four-person rankings plus 600 deterministic random complete
+and incomplete cohorts of size 4/6/8. Rent tests independently recompute envy and
+the paise-total certificate, including impossible nonnegative fair splits.
+Media tests exercise real image/video decoding, metadata removal, size/duration
+limits, atomic batches, ownership, concurrent gallery limits, ordering/deletion,
+byte-range playback, readiness gating, match-score ordering, and restart persistence.
+
+## MVP boundaries
+
+- Matching/filtering loads a bounded demo-sized population in memory; pagination
+  limits response size, not database computation.
+- One offering per provider; no payment, booking, or
+  ownership/email verification service. Provider relationship is self-reported.
+- Landmark distances are provider-declared; city/area/name matching is
+  case-insensitive text matching, without a map radius or PIN-to-area lookup.
+- Shared-home listings represent resident hosts. Multi-property/nonresident
+  shared-home management is outside this initial account model.
+- Chat uses persistent REST polling. Lease review is a labelled heuristic.
+- Media storage is local disk plus relational metadata; cloud object storage and
+  video transcoding are not required by this single-server demo.
+- No guaranteed exact envy-free rent equilibrium or unconditional stable pairing.
+
+For frontend request/response details, see [API.md](API.md).
+Per project guidance, commit functional team chunks every 1–2 hours with meaningful
+messages; no commit is created by the setup commands.

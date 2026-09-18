@@ -1,5 +1,7 @@
 # Environment files
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 *.env
@@ -17,6 +19,7 @@ ENV/
 *.db
 *.sqlite3
 propvibe.db
+backend/uploads/
 
 # Node & Frontend
 node_modules/

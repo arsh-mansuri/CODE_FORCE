@@ -1,0 +1,52 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python & Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.db
+*.sqlite3
+propvibe.db
+
+# Node & Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Testing & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+
+#ai agents jargon
+
+AGENTS.md
+GEMINI.md
+README 2.md
+SOUL.md

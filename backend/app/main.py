@@ -33,6 +33,9 @@ search together; offer a whole home; offer a room/shared space as owner or tenan
 All money is **INR**. Dates use **YYYY-MM-DD** and timestamps are **UTC**.
 Roommate gender/household requirements are mutual filters. Nearby derasar, mosque,
 temple, transit, and other landmark preferences describe location convenience only.
+Listings disclose electricity tariffs/split policies and AC availability, including
+separate AC rates where applicable. Unknown billing details remain null. Seekers
+can require AC access through `profile.search.ac_required`.
 
 **Math:** weighted cosine ranks eligible shared-living profiles; Irving can return
 no stable perfect matching; Rent Harmony is a bounded 2–3 room discrete simplex
@@ -55,7 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine.dispose()
 
     app = FastAPI(
-        title="PropVibe API", version="0.2.0", description=DESCRIPTION, lifespan=lifespan,
+        title="PropVibe API", version="0.3.0", description=DESCRIPTION, lifespan=lifespan,
         swagger_ui_parameters={"displayRequestDuration": True, "defaultModelsExpandDepth": 1},
         openapi_tags=[
             {"name": name, "description": description} for name, description in (

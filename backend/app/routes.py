@@ -92,7 +92,8 @@ def health(db: DB):
 def onboarding_questions(request: Request):
     """Public metadata for building an intent-aware signup form. Ordinary `field`
     values map to signup JSON paths. Media questions instead provide upload_endpoint
-    for the post-signup multipart step. `required` applies to `applies_to` intents.
+    for the post-signup multipart step. `required` applies within `applies_to`
+    intents when every `show_when` condition is satisfied.
     Optional fields use the defaults in the linked OpenAPI schema.
     Nearby religious landmarks describe proximity only, never personal identity.
     """
@@ -107,6 +108,7 @@ def signup(request: Request, body: Annotated[SignupRequest, Body(openapi_example
     property photos for providers. Discovery stays locked until uploads complete.
     Choose one of the five Swagger examples. Emails are case-insensitive and unique.
     Shared-living profiles require lifestyle answers; whole-home providers do not.
+    Offerings can disclose electricity rates/split rules and AC availability/charges.
     """
     if db.scalar(select(User.id).where(User.email == str(body.email))):
         raise problem(409, "email_in_use", "An account already uses this email. Please log in.")
@@ -162,7 +164,7 @@ def update_me(body: OnboardingSubmission, request: Request, user: Account, db: D
 @router.get("/users/feed", tags=["Discovery"], response_model=FeedResponse, summary="Discover compatible people or housing providers")
 def feed(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0, include_seen: bool = False, min_match_score: Annotated[float, Query(ge=0, le=100)] = 0):
     """Uses the authenticated profile. First filters complementary intent, geography,
-    budget, layout, dates, and bilateral household requirements, then ranks by weighted
+    budget, layout, dates, required AC access, and bilateral household requirements, then ranks by weighted
     lifestyle cosine (shared living) or housing fit (whole homes). Previously swiped
     profiles are hidden unless include_seen=true. Both accounts must finish photo
     onboarding. match_score is computed from requirements/lifestyle, never appearance.
@@ -188,6 +190,8 @@ def listings(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0, min_m
     """For seek_entire_home and seek_room accounts. Only active, eligible listings are
     returned. Areas and PIN codes are OR alternatives within the selected city;
     required nearby landmarks must have a provider-declared distance within the limit.
+    Electricity split/rate and AC charging details are included in each listing.
+    Seekers can require confirmed AC access via profile.search.ac_required.
     """
     require_discovery_ready(user)
     items = []

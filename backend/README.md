@@ -92,6 +92,11 @@ need complete photo galleries before appearing in discovery or sending new likes
   maximum proximity distances, and preferred versus required proximity.
 - Practical fit: INR rent range, flat layout, move-in window, stay duration,
   owner/tenant relationship, offered rent, deposit, furnishing, and availability.
+- Utility costs: electricity billing method, INR unit/monthly rate, and the agreed
+  split; whether accessible AC is installed, its location, and whether AC is
+  included or separately charged per unit, hour, or month.
+- AC requirement: seekers can require installed AC access before a property is
+  eligible for their deck. Unspecified availability does not satisfy this requirement.
 - Shared living: tidiness, social energy, guests, noise, sleep, work/study routine,
   food routine, smoking, and pets; explicit mutual household requirements.
 - Room preferences: initial importance of size, private bath, balcony, natural
@@ -104,6 +109,26 @@ be undisclosed; an empty acceptable-gender list means open to anyone. Proximity 
 a Jain derasar, mosque, temple, or other landmark never becomes an inferred
 religion or a lifestyle-vector dimension. Food routines are self-reported and
 independent of landmark preferences.
+
+### Electricity and AC cost transparency
+
+Listings now contain `electricity` and `air_conditioning` objects. These are saved
+through the existing signup and listing/profile update APIs and returned in the
+listing responses and swipe cards. Electricity supports inclusion in rent, a fixed
+monthly charge, a per-kWh rate, or the actual utility bill. A separate split policy
+supports equal sharing, individually metered use, an incoming-tenant percentage,
+full payment by the tenant, or a described custom agreement.
+
+AC availability is explicit. Installed AC can be included in rent/main electricity
+or charged separately with its own rate and payer/split rule. Contradictory or
+incomplete terms are rejected. The questionnaire uses `show_when` to ask only the
+applicable follow-up questions, such as the hourly rate when hourly AC charging
+is selected. Existing listings with no disclosure return null for these objects.
+
+`profile.search.ac_required=true` filters out properties without confirmed
+accessible AC. The rent budget remains rent-only; electricity terms are displayed
+separately because consumption is not known at discovery time. See the
+[billing contract and example](API.md#electricity-split-rates-and-ac).
 
 ## Photo-first onboarding and swipe cards
 

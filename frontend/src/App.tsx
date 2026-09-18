@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { AuthResponse, UserProfile } from './types/auth';
 import type { NavTab } from './components/layout/BottomNav';
-import { getStoredUser, getStoredToken, getMe, logout, clearSession } from './lib/api';
+import type { DiscoveryCandidate } from './types/discovery';
+import { getStoredUser, getStoredToken, getMe, logout, clearSession, getDiscoveryFeed, postSwipe } from './lib/api';
 import { TopAppBar } from './components/layout/TopAppBar';
 import { BottomNav } from './components/layout/BottomNav';
 import { DiscoveryFeed } from './components/discovery/DiscoveryFeed';
+import { ConnectionInbox } from './components/connections/ConnectionInbox';
 import { AuthShell } from './components/auth/AuthShell';
 import { DISCOVERY_CANDIDATES } from './lib/discoveryData';
+import { toDiscoveryCandidate } from './lib/discoveryApi';
 import './App.css';
 
 export function App() {
@@ -14,6 +17,11 @@ export function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('match');
   const [checkingSession, setCheckingSession] = useState(() => Boolean(getStoredToken()));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('reset-password') || '');
+  const [feed, setFeed] = useState<{ userId: string | null; candidates: DiscoveryCandidate[] }>({ userId: null, candidates: [] });
+
+  const userId = currentUser?.id ?? null;
+  const userOnboarded = Boolean(currentUser?.onboarding?.complete);
+  const candidateDeck = feed.userId === userId ? feed.candidates : DISCOVERY_CANDIDATES;
 
   useEffect(() => {
     let active = true;
@@ -22,6 +30,39 @@ export function App() {
     window.addEventListener('hashchange', readResetToken);
     return () => { active = false; window.removeEventListener('hashchange', readResetToken); };
   }, []);
+
+  useEffect(() => {
+    if (!userId || !userOnboarded) return;
+    let active = true;
+    getDiscoveryFeed()
+      .then(feedData => {
+        if (!active) return;
+        setFeed(feedData === null
+          ? { userId, candidates: DISCOVERY_CANDIDATES }
+          : { userId, candidates: feedData.items.map(toDiscoveryCandidate) });
+      })
+      .catch(() => {
+        if (active) setFeed({ userId, candidates: DISCOVERY_CANDIDATES });
+      });
+    return () => { active = false; };
+  }, [userId, userOnboarded]);
+
+  const loadFeed = () => {
+    getDiscoveryFeed()
+      .then(feedData => {
+        if (feedData === null) return;
+        setFeed({ userId, candidates: feedData.items.map(toDiscoveryCandidate) });
+      })
+      .catch(() => { /* Keep the current deck when the backend is unreachable. */ });
+  };
+
+  const handleSwipe = (candidateId: string, direction: 'like' | 'pass', note?: string) => {
+    if (feed.userId !== userId) return;
+    const remaining = feed.candidates.filter(candidate => candidate.id !== candidateId);
+    setFeed({ userId, candidates: remaining });
+    void postSwipe(candidateId, direction, note);
+    if (remaining.length === 0) loadFeed();
+  };
 
   const handleAuthSuccess = (auth: AuthResponse) => {
     setCurrentUser(auth.user);
@@ -58,7 +99,8 @@ export function App() {
             }}
           />
           <main style={{ width: '100%' }}>
-            <DiscoveryFeed candidates={DISCOVERY_CANDIDATES} />
+            <DiscoveryFeed candidates={candidateDeck} onSwipe={handleSwipe} onSendNote={(candidateId, note) => handleSwipe(candidateId, 'like', note)} />
+            <ConnectionInbox onResolved={loadFeed} />
           </main>
         </>
       )}

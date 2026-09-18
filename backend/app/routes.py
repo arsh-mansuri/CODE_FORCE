@@ -13,7 +13,7 @@ from .lease import analyze_lease
 from .matching import candidate_view, compatibility, listing_view, profile_of, user_view
 from .media_storage import remove_files
 from .media_views import onboarding_status, require_discovery_ready
-from .models import AuthSession, Listing, Match, Message, PasswordReset, Profile, RentSession, Swipe, User, new_id, utcnow
+from .models import AccountDeletionRequest, AuthSession, Listing, Match, Message, PasswordReset, Profile, RentSession, Swipe, SwipeNote, User, new_id, utcnow
 from .password_reset import require_reset_email, send_reset_email
 from .onboarding import questionnaire
 from .schemas import (
@@ -21,7 +21,7 @@ from .schemas import (
     LeaseRequest, ListingFeed, ListingFeedItem, ListingInput, ListingView, LoginRequest,
     MatchView, MessageInput, MessageView, Notice, OnboardingSubmission, Questionnaire,
     RentCalculation, RentRequest, SignupRequest, StablePair, StableRequest, StableResponse,
-    ResetPasswordRequest, SwipeRequest, SwipeResponse, UserProfile,
+    ResetPasswordRequest, SwipeRequest, SwipeResponse, ConnectionRequestView, ConnectionRequestsResponse, UserProfile,
 )
 from .security import (
     DUMMY_HASH, current_session, current_user, hash_password, issue_session, problem, token_digest, verify_password,
@@ -223,6 +223,27 @@ def update_me(body: OnboardingSubmission, request: Request, user: Account, db: D
     return user_view(user)
 
 
+@router.post("/users/me/deletion-request", tags=["Profiles"], response_model=UserProfile, summary="Flag your account for deletion in seven days")
+def request_account_deletion(user: Account, db: DB):
+    """Persist a private deletion request. Repeated requests retain the original deadline.
+    This queues the account for deletion processing; it does not immediately remove data.
+    """
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    if user.deletion_request is None:
+        now = utcnow()
+        user.deletion_request = AccountDeletionRequest(requested_at=now, scheduled_for=now + timedelta(days=7))
+        db.commit()
+    return user_view(user)
+
+
+@router.delete("/users/me/deletion-request", tags=["Profiles"], response_model=UserProfile, summary="Cancel your pending account deletion request")
+def cancel_account_deletion(user: Account, db: DB):
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    user.deletion_request = None
+    db.commit()
+    return user_view(user)
+
+
 @router.get("/list", tags=["Discovery"], response_model=FeedResponse, summary="Get photo-first swipe cards with names, locations, and match scores")
 @router.get("/users/feed", tags=["Discovery"], response_model=FeedResponse, summary="Discover compatible people or housing providers")
 def feed(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0, include_seen: bool = False, min_match_score: Annotated[float, Query(ge=0, le=100)] = 0):
@@ -306,12 +327,59 @@ def get_listing(listing_id: str, user: Account, db: DB):
     return listing_view(listing)
 
 
+@router.get("/connections/requests", tags=["Connections"], response_model=ConnectionRequestsResponse,
+            summary="List incoming connection requests with the message they sent")
+def connection_requests(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0):
+    """People who liked you and are still waiting on your answer. Each request shows the
+    other person's card and the note they attached when liking you. Like them back via
+    POST /api/swipe to accept (the note becomes your first message); pass to decline.
+    """
+    pending: list[ConnectionRequestView] = []
+    incoming = db.scalars(select(Swipe).where(
+        Swipe.target_id == user.id, Swipe.direction.in_(("like", "superlike")),
+    ).order_by(Swipe.updated_at.desc(), Swipe.id)).all()
+    for swipe in incoming:
+        requester = db.get(User, swipe.swiper_id)
+        if requester is None or not onboarding_status(requester).complete:
+            continue
+        reverse = db.scalar(select(Swipe).where(Swipe.swiper_id == user.id, Swipe.target_id == requester.id))
+        if reverse is not None:
+            # Already answered: a like/superlike back made it mutual, a pass declined it.
+            continue
+        score = compatibility(user, requester)
+        if score is None:
+            continue
+        note = db.scalar(select(SwipeNote).where(SwipeNote.swipe_id == swipe.id))
+        pending.append(ConnectionRequestView(
+            id=swipe.id, requester=candidate_view(requester, score),
+            direction=swipe.direction, note=note.note if note else None,
+            created_at=swipe.updated_at.replace(tzinfo=timezone.utc),
+        ))
+    has_more = offset + limit < len(pending)
+    return ConnectionRequestsResponse(
+        items=pending[offset:offset + limit], total=len(pending), limit=limit, offset=offset,
+        has_more=has_more, next_offset=offset + limit if has_more else None,
+    )
+
+
+def seed_opening_messages(db: Session, match: Match, swipes: list[Swipe | None]):
+    """Copy each person's attached note into the brand-new match as its first message."""
+    for swipe in swipes:
+        if swipe is None:
+            continue
+        note = db.scalar(select(SwipeNote).where(SwipeNote.swipe_id == swipe.id))
+        if note is not None and note.note.strip():
+            db.add(Message(match_id=match.id, sender_id=swipe.swiper_id, content=note.note))
+
+
 @router.post("/swipe", tags=["Connections"], response_model=SwipeResponse, summary="Like, pass, or superlike an eligible profile")
 def swipe(body: SwipeRequest, user: Account, db: DB):
     """A single stored swipe per ordered pair makes repeated requests idempotent.
     like/superlike require current eligibility. Only reciprocal positive swipes create
     one canonical match and unlock messaging. Passing revokes an existing match;
     another positive swipe can reconnect only if the other person's like still exists.
+    An attached note is saved with the swipe and, on a new mutual match, seeded as the
+    opening message so the request's message carries into the conversation.
     """
     if body.target_id == user.id:
         raise problem(422, "self_swipe", "Choose someone else's profile.")
@@ -330,10 +398,17 @@ def swipe(body: SwipeRequest, user: Account, db: DB):
         raise problem(409, "incompatible_profile", "Your current intents, housing requirements, or household preferences do not align.")
     record = db.scalar(select(Swipe).where(Swipe.swiper_id == user.id, Swipe.target_id == target.id))
     if record is None:
-        db.add(Swipe(swiper_id=user.id, target_id=target.id, direction=body.direction))
+        record = Swipe(swiper_id=user.id, target_id=target.id, direction=body.direction)
+        db.add(record)
     else:
         record.direction = body.direction
         record.updated_at = utcnow()
+    if body.note is not None:
+        db.flush()
+        note = body.note.strip()
+        db.execute(delete(SwipeNote).where(SwipeNote.swipe_id == record.id))
+        if note:
+            db.add(SwipeNote(swipe_id=record.id, note=note))
     reverse = db.scalar(select(Swipe).where(Swipe.swiper_id == target.id, Swipe.target_id == user.id))
     match = pair_match(db, user.id, target.id)
     mutual = body.direction != "pass" and reverse is not None and reverse.direction != "pass" and score is not None
@@ -342,6 +417,8 @@ def swipe(body: SwipeRequest, user: Account, db: DB):
             left, right = sorted((user.id, target.id))
             match = Match(user1_id=left, user2_id=right, compatibility_score=score.score)
             db.add(match)
+            db.flush()
+            seed_opening_messages(db, match, [reverse, record])
         match.is_active = True
         reverse_score = compatibility(target, user)
         match.compatibility_score = round((score.score + reverse_score.score) / 2, 2)

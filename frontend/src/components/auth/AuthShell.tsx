@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { AuthResponse, UserProfile } from '../../types/auth';
 import { LoginForm } from './LoginForm';
 import { SignupFlow } from './SignupFlow';
-import { UserDashboardBanner } from './UserDashboardBanner';
+import { ProfilePage } from './ProfilePage';
 import { ResetPasswordForm } from './ResetPasswordForm';
 import { MediaOnboarding } from './MediaOnboarding';
 import './Auth.css';
@@ -33,11 +33,9 @@ export function AuthShell({ currentUser, onAuthSuccess, onUserUpdate, onLogout, 
       user={currentUser}
       onFinish={user => { onUserUpdate(user); setEditingMedia(false); }}
       onLogout={onLogout}
-    /> : <>
-      <header className="auth-topbar"><span className="auth-wordmark">Your PropVibe</span></header>
-      <UserDashboardBanner user={currentUser} onLogout={onLogout} onSwitchPersona={onLogout} />
-      <button className="secondary-button manage-media" onClick={() => setEditingMedia(true)}>Manage photos & videos</button>
-    </>}
+      editing={editingMedia}
+    /> : <ProfilePage key={currentUser.id} user={currentUser} onUserUpdate={onUserUpdate}
+      onEditMedia={() => setEditingMedia(true)} onLogout={onLogout} />}
   </main>;
 
   if (screen === 'welcome') return <main className="auth-welcome">

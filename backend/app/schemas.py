@@ -429,6 +429,11 @@ class ListingView(ListingInput):
     media: MediaGallery
 
 
+class AccountDeletionStatus(Schema):
+    requested_at: datetime
+    scheduled_for: datetime = Field(description="UTC timestamp seven days after the request, flagging the account for deletion processing.")
+
+
 class UserProfile(Schema):
     id: str
     email: EmailStr
@@ -437,6 +442,7 @@ class UserProfile(Schema):
     created_at: datetime
     media: MediaGallery
     onboarding: OnboardingStatus
+    deletion_request: AccountDeletionStatus | None = None
 
 
 class AuthResponse(Schema):
@@ -531,12 +537,31 @@ class ListingFeed(Schema):
 class SwipeRequest(Schema):
     target_id: str = Field(min_length=1, max_length=36)
     direction: Literal["like", "pass", "superlike"]
+    note: str | None = Field(default=None, min_length=1, max_length=2000,
+        description="Optional message to the other person. It becomes the opening chat message once they approve.")
 
 
 class SwipeResponse(Schema):
     matched: bool
     match_id: str | None
     message: str
+
+
+class ConnectionRequestView(Schema):
+    id: str = Field(description="The pending like/superlike to approve or decline.")
+    requester: Candidate = Field(description="The person who liked you, as a discoverable card.")
+    direction: Literal["like", "superlike"]
+    note: str | None = Field(description="The message they attached when liking you.")
+    created_at: datetime
+
+
+class ConnectionRequestsResponse(Schema):
+    items: list[ConnectionRequestView]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    next_offset: int | None
 
 
 class MatchView(Schema):

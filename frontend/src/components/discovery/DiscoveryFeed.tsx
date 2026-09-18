@@ -10,18 +10,19 @@ import { StickyActionBar } from './StickyActionBar';
 interface DiscoveryFeedProps {
   candidates: DiscoveryCandidate[];
   onSwipe?: (candidateId: string, direction: 'like' | 'pass') => void;
+  onSendNote?: (candidateId: string, note: string) => void;
 }
 
 export const DiscoveryFeed: React.FC<DiscoveryFeedProps> = ({
   candidates,
   onSwipe,
+  onSendNote,
 }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   const [commentModalOpen, setCommentModalOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
 
-  const candidate = candidates[currentIndex % candidates.length];
+  const candidate = candidates[0];
 
   const showToast = (msg: string) => {
     setFeedbackToast(msg);
@@ -31,13 +32,14 @@ export const DiscoveryFeed: React.FC<DiscoveryFeedProps> = ({
   };
 
   const handlePass = () => {
+    if (!candidate) return;
     onSwipe?.(candidate.id, 'pass');
     showToast(`Passed on ${candidate.name}`);
-    setCurrentIndex((prev) => (prev + 1) % candidates.length);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleLike = () => {
+    if (!candidate) return;
     onSwipe?.(candidate.id, 'like');
     confetti({
       particleCount: 50,
@@ -46,13 +48,15 @@ export const DiscoveryFeed: React.FC<DiscoveryFeedProps> = ({
       colors: ['#923326', '#2a6a48', '#ffdad4', '#aceec4'],
     });
     showToast(`Liked ${candidate.name}! ❤️`);
-    setCurrentIndex((prev) => (prev + 1) % candidates.length);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSendComment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
+    const note = commentText.trim();
+    if (!note) return;
+    if (!candidate) return;
+    onSendNote?.(candidate.id, note);
     confetti({
       particleCount: 60,
       spread: 70,
@@ -62,9 +66,39 @@ export const DiscoveryFeed: React.FC<DiscoveryFeedProps> = ({
     showToast(`Comment sent to ${candidate.name}! 💬`);
     setCommentText('');
     setCommentModalOpen(false);
-    setCurrentIndex((prev) => (prev + 1) % candidates.length);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  if (!candidate) {
+    return (
+      <div
+        style={{
+          padding: '120px 24px 140px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '10px',
+          textAlign: 'center',
+        }}
+      >
+        <span
+          className="material-symbols-outlined"
+          style={{ fontSize: '44px', color: 'var(--color-tertiary)' }}
+        >
+          person_search
+        </span>
+        <h3
+          className="font-serif"
+          style={{ fontSize: '20px', fontWeight: 600, color: 'var(--color-on-surface)', margin: 0 }}
+        >
+          You&rsquo;re all caught up
+        </h3>
+        <p style={{ fontSize: '13px', margin: 0, maxWidth: '260px', color: 'var(--color-on-surface-variant)' }}>
+          No more profiles right now. Check your connection requests below when someone likes you with a note.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>

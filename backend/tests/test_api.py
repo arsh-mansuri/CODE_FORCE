@@ -163,6 +163,53 @@ def test_mutual_swipes_idempotency_and_private_messaging(client, register, app):
     assert client.get("/api/matches", headers=ha).json() == []
 
 
+def test_connection_request_note_and_accept_proxies_message(client, register):
+    a, ha, _ = register()
+    b, hb, _ = register()
+    send = {"target_id": b["user"]["id"], "direction": "like", "note": "Love your profile!"}
+    assert client.post("/api/swipe", headers=ha, json=send).json()["matched"] is False
+    inbox = client.get("/api/connections/requests", headers=hb).json()
+    assert inbox["total"] == 1
+    item = inbox["items"][0]
+    assert item["requester"]["id"] == a["user"]["id"]
+    assert item["note"] == "Love your profile!"
+    assert item["direction"] == "like"
+    latest = client.get("/api/connections/requests", headers=ha).json()
+    assert latest["items"] == [] and latest["total"] == 0
+    accept = like(client, hb, a["user"]["id"])
+    assert accept.json()["matched"] is True
+    match_id = accept.json()["match_id"]
+    messages = client.get(f"/api/matches/{match_id}/messages", headers=ha).json()
+    assert [m["content"] for m in messages] == ["Love your profile!"]
+    assert [m["sender_id"] for m in messages] == [a["user"]["id"]]
+    assert client.get("/api/connections/requests", headers=hb).json()["total"] == 0
+    assert client.get("/api/matches", headers=ha).json()[0]["id"] == match_id
+    assert client.get("/api/matches", headers=hb).json()[0]["id"] == match_id
+
+
+def test_connection_request_disappears_when_declined_and_superlike_is_labeled(client, register):
+    a, ha, _ = register()
+    b, hb, _ = register()
+    assert client.post("/api/swipe", headers=ha, json={
+        "target_id": b["user"]["id"], "direction": "superlike", "note": "You look great!"
+    }).status_code == 200
+    item = client.get("/api/connections/requests", headers=hb).json()["items"][0]
+    assert item["direction"] == "superlike" and item["note"] == "You look great!"
+    assert like(client, hb, a["user"]["id"], "pass").json()["matched"] is False
+    assert client.get("/api/connections/requests", headers=hb).json()["items"] == []
+    assert client.get("/api/matches", headers=ha).json() == []
+
+
+def test_connection_note_is_validated(client, register):
+    a, ha, _ = register()
+    b, hb, _ = register()
+    blank = client.post("/api/swipe", headers=ha, json={"target_id": b["user"]["id"], "direction": "like", "note": "   "})
+    assert blank.status_code == 422
+    long = client.post("/api/swipe", headers=ha, json={"target_id": b["user"]["id"], "direction": "like", "note": "x" * 2001})
+    assert long.status_code == 422
+    assert client.get("/api/connections/requests", headers=hb).json()["items"] == []
+
+
 def test_concurrent_reciprocal_likes_create_one_match(client, register, app):
     a, ha, _ = register()
     b, hb, _ = register()

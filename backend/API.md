@@ -152,6 +152,24 @@ Returns the same shape as signup with a new session token.
 
 There is no public endpoint exposing another person's full private profile.
 
+### Account deletion requests
+
+- **POST `/users/me/deletion-request`** (bearer token required, no body): flags
+  the signed-in account for deletion processing seven days from the server's UTC
+  request time. Returns the updated `UserProfile` with
+  `deletion_request: { requested_at, scheduled_for }`. Repeating the request
+  returns the original timestamps, without extending the deadline.
+- **DELETE `/users/me/deletion-request`** (bearer token required, no body): cancels
+  the pending request and returns `deletion_request: null`. Safe to repeat.
+- The flag appears only in private account responses (including login and
+  `GET /users/me`), survives profile edits and restarts, and is never included in
+  discovery cards. Accounts remain available while their request is pending.
+
+Requests are stored in `account_deletion_requests`, keyed by `user_id` with an
+indexed `scheduled_for` timestamp. Startup creates this new table for existing
+databases. This is a persistent request queue for deletion processing; these
+endpoints do not run an automatic purge job or immediately delete account data.
+
 ## 4. Discover people or listings
 
 **GET `/list?limit=20&offset=0&include_seen=false&min_match_score=0`**
@@ -342,11 +360,14 @@ is known. Existing rent budgets and Rent Harmony remain rent-only.
 **POST `/swipe`**
 
 ```json
-{"target_id": "PROFILE-UUID-FROM-FEED", "direction": "like"}
+{"target_id": "PROFILE-UUID-FROM-FEED", "direction": "like", "note": "Love your coffee beans rule!"}
 ```
 
 Directions: `like`, `pass`, `superlike`. A superlike is a positive swipe with the
 same consent semantics; it does not bypass eligibility or guarantee placement.
+`note` is optional (1–2,000 nonblank characters) and shown with the incoming
+connection request; once the other person approves, the note is seeded as that
+person's opening chat message.
 
 Response: `{ "matched": false, "match_id": null, "message": "..." }`, or a true
 match and its ID when both users have liked. Repeating a swipe updates the same
@@ -354,6 +375,12 @@ ledger row; there is at most one match for a canonical user pair. Incompatible
 positive swipes return 409. Passing deactivates the match and locks its chat.
 Positive swipes also require both accounts to have completed photo onboarding.
 
+- **GET `/connections/requests?limit=20&offset=0`**: incoming likes/superlikes
+  still waiting on your answer, newest first. Each item: `id` (the pending swipe),
+  `requester` (candidate DTO), `direction`, `note`, `created_at`. Accept by liking
+  the requester back via **POST `/swipe`** — their note becomes your first message;
+  pass to decline and hide the request. Requests appear only while you have not yet
+  answered with a like or pass.
 - **GET `/matches?limit=20&offset=0`**: your active matches, newest first. Each
   contains `id`, `other_user` (candidate DTO), `compatibility_score`, `created_at`.
 - **POST `/matches/{match_id}/messages`**: `{ "content": "Hello!" }`, returns 201

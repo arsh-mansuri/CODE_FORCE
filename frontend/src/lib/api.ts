@@ -1,4 +1,6 @@
 import type { AuthResponse, LoginRequest, SignupRequest, UserProfile, MediaResponse } from '../types/auth';
+import type { DiscoveryFeedResponse, SwipeDirection, SwipeResponse } from '../types/discovery';
+import type { ConnectionRequestsResponse, MatchView } from '../types/connections';
 import { DEMO_PERSONAS } from './demoPersonas';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || "https://childrens-after-janet-brass.trycloudflare.com/api" || '/api').replace(/\/$/, '');
@@ -140,6 +142,45 @@ export async function getMe(): Promise<UserProfile | null> {
   }
 }
 
+export async function updateProfile(payload: Pick<SignupRequest, 'profile' | 'offering'>): Promise<UserProfile> {
+  const token = getStoredToken();
+  if (token?.startsWith('offline_demo_')) {
+    const current = getStoredUser();
+    if (!current) throw new ApiError('Please sign in again to edit your profile.', 401);
+    const user: UserProfile = {
+      ...current,
+      profile: payload.profile,
+      offering: current.offering && payload.offering ? { ...current.offering, ...payload.offering } : null,
+    };
+    saveUser(user);
+    return user;
+  }
+  const user = await request<UserProfile>('/users/me', {
+    method: 'PUT', headers: { ...authorization(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  saveUser(user);
+  return user;
+}
+
+export async function setAccountDeletionRequested(requested: boolean): Promise<UserProfile> {
+  const token = getStoredToken();
+  if (token?.startsWith('offline_demo_')) {
+    const current = getStoredUser();
+    if (!current) throw new ApiError('Please sign in again to manage your account.', 401);
+    const now = new Date();
+    const user: UserProfile = { ...current, deletion_request: requested ? current.deletion_request || {
+      requested_at: now.toISOString(), scheduled_for: new Date(now.getTime() + 7 * 86400000).toISOString(),
+    } : null };
+    saveUser(user);
+    return user;
+  }
+  const user = await request<UserProfile>('/users/me/deletion-request', {
+    method: requested ? 'POST' : 'DELETE', headers: authorization(),
+  });
+  saveUser(user);
+  return user;
+}
+
 export async function uploadMedia(target: 'profile' | 'property', kind: 'photos' | 'video', files: File[]): Promise<MediaResponse> {
   const body = new FormData();
   files.forEach(file => body.append(kind === 'photos' ? 'files' : 'file', file));
@@ -157,4 +198,45 @@ export async function fetchOnboardingQuestions(): Promise<import('../types/onboa
     const { FALLBACK_QUESTIONNAIRE } = await import('./onboardingFallback');
     return FALLBACK_QUESTIONNAIRE;
   }
+}
+
+export async function getDiscoveryFeed(limit = 20, offset = 0): Promise<DiscoveryFeedResponse | null> {
+  const token = getStoredToken();
+  if (!token || token.startsWith('offline_demo_')) return null;
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+    include_seen: 'false',
+    min_match_score: '0',
+  });
+  return request(`/list?${params.toString()}`, { headers: authorization() });
+}
+
+export async function postSwipe(targetId: string, direction: SwipeDirection, note?: string): Promise<SwipeResponse | null> {
+  const token = getStoredToken();
+  if (!token || token.startsWith('offline_demo_')) return null;
+  try {
+    const body: { target_id: string; direction: SwipeDirection; note?: string } = { target_id: targetId, direction };
+    if (note) body.note = note;
+    return await request<SwipeResponse>('/swipe', {
+      method: 'POST',
+      headers: { ...authorization(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function getConnectionRequests(limit = 20, offset = 0): Promise<ConnectionRequestsResponse | null> {
+  const token = getStoredToken();
+  if (!token || token.startsWith('offline_demo_')) return null;
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return request(`/connections/requests?${params.toString()}`, { headers: authorization() });
+}
+
+export async function getMatches(limit = 20, offset = 0): Promise<MatchView[] | null> {
+  const token = getStoredToken();
+  if (!token || token.startsWith('offline_demo_')) return null;
+  return request(`/matches?limit=${limit}&offset=${offset}`, { headers: authorization() });
 }

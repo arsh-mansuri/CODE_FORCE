@@ -7,8 +7,8 @@ import { StepHeader } from './StepHeader';
 
 interface MediaStep { target: 'profile' | 'property'; kind: 'photos' | 'video'; title: string; description: string }
 
-export function MediaOnboarding({ user, onFinish, onLogout }: {
-  user: UserProfile; onFinish: (user: UserProfile) => void; onLogout: () => void;
+export function MediaOnboarding({ user, onFinish, onLogout, editing = false }: {
+  user: UserProfile; onFinish: (user: UserProfile) => void; onLogout: () => void; editing?: boolean;
 }) {
   const [draft, setDraft] = useState(user);
   const [busy, setBusy] = useState(false);
@@ -43,6 +43,7 @@ export function MediaOnboarding({ user, onFinish, onLogout }: {
   }
 
   return <div className="flow-page media-onboarding">
+    {editing && <button type="button" className="secondary-button" disabled={busy || !draft.onboarding.complete} onClick={() => onFinish(draft)}>Done — back to profile</button>}
     <div className="flow-progress"><div><span>Make it yours</span><span>{index + 1} / {steps.length}</span></div><progress value={index + 1} max={steps.length} aria-label="Media setup progress" /></div>
     <div className="flow-content" key={`${step.target}-${step.kind}`}>
       <StepHeader title={step.title} description={step.description} icon={step.kind === 'photos' ? 'photo_camera' : 'videocam'} />

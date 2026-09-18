@@ -1,7 +1,7 @@
 import type { AuthResponse, LoginRequest, SignupRequest, UserProfile, MediaResponse } from '../types/auth';
 import { DEMO_PERSONAS } from './demoPersonas';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_URL || "https://childrens-after-janet-brass.trycloudflare.com/api" || '/api').replace(/\/$/, '');
 const TOKEN_KEY = 'propvibe_token';
 const USER_KEY = 'propvibe_user';
 const EXPIRY_KEY = 'propvibe_expiry';

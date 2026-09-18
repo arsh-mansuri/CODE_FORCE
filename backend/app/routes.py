@@ -13,7 +13,7 @@ from .lease import analyze_lease
 from .matching import candidate_view, compatibility, listing_view, profile_of, user_view
 from .media_storage import remove_files
 from .media_views import onboarding_status, require_discovery_ready
-from .models import AuthSession, Listing, Match, Message, PasswordReset, Profile, RentSession, Swipe, User, new_id, utcnow
+from .models import AccountDeletionRequest, AuthSession, Listing, Match, Message, PasswordReset, Profile, RentSession, Swipe, User, new_id, utcnow
 from .password_reset import require_reset_email, send_reset_email
 from .onboarding import questionnaire
 from .schemas import (
@@ -220,6 +220,27 @@ def update_me(body: OnboardingSubmission, request: Request, user: Account, db: D
     db.commit()
     remove_files(request.app.state.settings.media_root, retired_media)
     db.expire(user, ["media_assets"])
+    return user_view(user)
+
+
+@router.post("/users/me/deletion-request", tags=["Profiles"], response_model=UserProfile, summary="Flag your account for deletion in seven days")
+def request_account_deletion(user: Account, db: DB):
+    """Persist a private deletion request. Repeated requests retain the original deadline.
+    This queues the account for deletion processing; it does not immediately remove data.
+    """
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    if user.deletion_request is None:
+        now = utcnow()
+        user.deletion_request = AccountDeletionRequest(requested_at=now, scheduled_for=now + timedelta(days=7))
+        db.commit()
+    return user_view(user)
+
+
+@router.delete("/users/me/deletion-request", tags=["Profiles"], response_model=UserProfile, summary="Cancel your pending account deletion request")
+def cancel_account_deletion(user: Account, db: DB):
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    user.deletion_request = None
+    db.commit()
     return user_view(user)
 
 

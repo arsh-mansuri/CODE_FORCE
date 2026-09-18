@@ -429,6 +429,11 @@ class ListingView(ListingInput):
     media: MediaGallery
 
 
+class AccountDeletionStatus(Schema):
+    requested_at: datetime
+    scheduled_for: datetime = Field(description="UTC timestamp seven days after the request, flagging the account for deletion processing.")
+
+
 class UserProfile(Schema):
     id: str
     email: EmailStr
@@ -437,6 +442,7 @@ class UserProfile(Schema):
     created_at: datetime
     media: MediaGallery
     onboarding: OnboardingStatus
+    deletion_request: AccountDeletionStatus | None = None
 
 
 class AuthResponse(Schema):

@@ -2,7 +2,7 @@ import React from 'react';
 import type { DiscoveryCandidate } from '../../types/discovery';
 
 interface ProfileHeaderCardProps {
-  candidate: DiscoveryCandidate;
+  candidate: Pick<DiscoveryCandidate, 'name' | 'age' | 'verified' | 'subtitle' | 'chips'> & { matchScore?: number };
 }
 
 export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({ candidate }) => {
@@ -68,7 +68,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({ candidate 
         </div>
 
         {/* Compatibility Match Pill */}
-        <div
+        {candidate.matchScore !== undefined && <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -95,7 +95,7 @@ export const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({ candidate 
               Match
             </span>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Divider */}

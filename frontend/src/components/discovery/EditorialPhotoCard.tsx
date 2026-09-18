@@ -4,9 +4,10 @@ import type { PhotoCardData } from '../../types/discovery';
 interface EditorialPhotoCardProps {
   photo: PhotoCardData;
   onLike?: (photoId: string) => void;
+  readOnly?: boolean;
 }
 
-export const EditorialPhotoCard: React.FC<EditorialPhotoCardProps> = ({ photo, onLike }) => {
+export const EditorialPhotoCard: React.FC<EditorialPhotoCardProps> = ({ photo, onLike, readOnly = false }) => {
   const [liked, setLiked] = useState(false);
 
   const handleLikeClick = (e: React.MouseEvent) => {
@@ -73,7 +74,7 @@ export const EditorialPhotoCard: React.FC<EditorialPhotoCardProps> = ({ photo, o
       </div>
 
       {/* Bottom-right floating like button */}
-      <button
+      {!readOnly && <button
         type="button"
         onClick={handleLikeClick}
         style={{
@@ -105,7 +106,7 @@ export const EditorialPhotoCard: React.FC<EditorialPhotoCardProps> = ({ photo, o
         >
           favorite
         </span>
-      </button>
+      </button>}
     </div>
   );
 };

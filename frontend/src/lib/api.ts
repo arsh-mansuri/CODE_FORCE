@@ -140,6 +140,45 @@ export async function getMe(): Promise<UserProfile | null> {
   }
 }
 
+export async function updateProfile(payload: Pick<SignupRequest, 'profile' | 'offering'>): Promise<UserProfile> {
+  const token = getStoredToken();
+  if (token?.startsWith('offline_demo_')) {
+    const current = getStoredUser();
+    if (!current) throw new ApiError('Please sign in again to edit your profile.', 401);
+    const user: UserProfile = {
+      ...current,
+      profile: payload.profile,
+      offering: current.offering && payload.offering ? { ...current.offering, ...payload.offering } : null,
+    };
+    saveUser(user);
+    return user;
+  }
+  const user = await request<UserProfile>('/users/me', {
+    method: 'PUT', headers: { ...authorization(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  saveUser(user);
+  return user;
+}
+
+export async function setAccountDeletionRequested(requested: boolean): Promise<UserProfile> {
+  const token = getStoredToken();
+  if (token?.startsWith('offline_demo_')) {
+    const current = getStoredUser();
+    if (!current) throw new ApiError('Please sign in again to manage your account.', 401);
+    const now = new Date();
+    const user: UserProfile = { ...current, deletion_request: requested ? current.deletion_request || {
+      requested_at: now.toISOString(), scheduled_for: new Date(now.getTime() + 7 * 86400000).toISOString(),
+    } : null };
+    saveUser(user);
+    return user;
+  }
+  const user = await request<UserProfile>('/users/me/deletion-request', {
+    method: requested ? 'POST' : 'DELETE', headers: authorization(),
+  });
+  saveUser(user);
+  return user;
+}
+
 export async function uploadMedia(target: 'profile' | 'property', kind: 'photos' | 'video', files: File[]): Promise<MediaResponse> {
   const body = new FormData();
   files.forEach(file => body.append(kind === 'photos' ? 'files' : 'file', file));

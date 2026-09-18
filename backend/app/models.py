@@ -25,6 +25,14 @@ class User(Base):
     profile: Mapped["Profile"] = relationship(cascade="all, delete-orphan", uselist=False)
     listing: Mapped["Listing | None"] = relationship(cascade="all, delete-orphan", uselist=False)
     media_assets: Mapped[list["MediaAsset"]] = relationship(cascade="all, delete-orphan")
+    deletion_request: Mapped["AccountDeletionRequest | None"] = relationship(cascade="all, delete-orphan", uselist=False)
+
+
+class AccountDeletionRequest(Base):
+    __tablename__ = "account_deletion_requests"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    requested_at: Mapped[datetime] = mapped_column(default=utcnow)
+    scheduled_for: Mapped[datetime] = mapped_column(index=True)
 
 
 class Profile(Base):

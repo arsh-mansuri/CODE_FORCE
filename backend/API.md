@@ -152,6 +152,24 @@ Returns the same shape as signup with a new session token.
 
 There is no public endpoint exposing another person's full private profile.
 
+### Account deletion requests
+
+- **POST `/users/me/deletion-request`** (bearer token required, no body): flags
+  the signed-in account for deletion processing seven days from the server's UTC
+  request time. Returns the updated `UserProfile` with
+  `deletion_request: { requested_at, scheduled_for }`. Repeating the request
+  returns the original timestamps, without extending the deadline.
+- **DELETE `/users/me/deletion-request`** (bearer token required, no body): cancels
+  the pending request and returns `deletion_request: null`. Safe to repeat.
+- The flag appears only in private account responses (including login and
+  `GET /users/me`), survives profile edits and restarts, and is never included in
+  discovery cards. Accounts remain available while their request is pending.
+
+Requests are stored in `account_deletion_requests`, keyed by `user_id` with an
+indexed `scheduled_for` timestamp. Startup creates this new table for existing
+databases. This is a persistent request queue for deletion processing; these
+endpoints do not run an automatic purge job or immediately delete account data.
+
 ## 4. Discover people or listings
 
 **GET `/list?limit=20&offset=0&include_seen=false&min_match_score=0`**

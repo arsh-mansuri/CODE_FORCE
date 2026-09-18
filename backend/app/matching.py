@@ -5,7 +5,7 @@ from math import sqrt
 from .models import User
 from .media_views import gallery_assets, gallery_view, onboarding_status
 from .schemas import (
-    Candidate, CardLocation, Compatibility, Diet, Intent, Lifestyle, ListingInput, ListingView,
+    AccountDeletionStatus, Candidate, CardLocation, Compatibility, Diet, Intent, Lifestyle, ListingInput, ListingView,
     RoommatePreferences, SearchLocation, UserProfile, UserProfileInput,
 )
 
@@ -30,6 +30,10 @@ def user_view(user: User) -> UserProfile:
         id=user.id, email=user.email, profile=profile_of(user), offering=listing_view(user.listing),
         created_at=user.created_at.replace(tzinfo=timezone.utc),
         media=gallery_view(gallery_assets(user, "profile")), onboarding=onboarding_status(user),
+        deletion_request=AccountDeletionStatus(
+            requested_at=user.deletion_request.requested_at.replace(tzinfo=timezone.utc),
+            scheduled_for=user.deletion_request.scheduled_for.replace(tzinfo=timezone.utc),
+        ) if user.deletion_request else None,
     )
 
 

@@ -230,6 +230,11 @@ export interface ListingView extends ListingInput {
   media: MediaGallery;
 }
 
+export interface AccountDeletionStatus {
+  requested_at: string;
+  scheduled_for: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -238,6 +243,7 @@ export interface UserProfile {
   created_at: string;
   media: MediaGallery;
   onboarding: OnboardingStatus;
+  deletion_request?: AccountDeletionStatus | null;
 }
 
 export interface AuthResponse {

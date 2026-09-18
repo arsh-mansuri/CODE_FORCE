@@ -4,9 +4,10 @@ import type { PromptCardData } from '../../types/discovery';
 interface HingePromptCardProps {
   prompt: PromptCardData;
   onLike?: (promptId: string) => void;
+  readOnly?: boolean;
 }
 
-export const HingePromptCard: React.FC<HingePromptCardProps> = ({ prompt, onLike }) => {
+export const HingePromptCard: React.FC<HingePromptCardProps> = ({ prompt, onLike, readOnly = false }) => {
   const [liked, setLiked] = useState(false);
 
   const handleLikeClick = (e: React.MouseEvent) => {
@@ -49,14 +50,16 @@ export const HingePromptCard: React.FC<HingePromptCardProps> = ({ prompt, onLike
           fontWeight: 500,
           color: 'var(--color-on-surface)',
           letterSpacing: '-0.01em',
-          margin: '0 36px 0 0',
+          margin: readOnly ? 0 : '0 36px 0 0',
+          overflowWrap: 'anywhere',
+          whiteSpace: 'pre-wrap',
         }}
       >
         “{prompt.text}”
       </blockquote>
 
       {/* Floating Like Button */}
-      <button
+      {!readOnly && <button
         type="button"
         onClick={handleLikeClick}
         style={{
@@ -87,7 +90,7 @@ export const HingePromptCard: React.FC<HingePromptCardProps> = ({ prompt, onLike
         >
           favorite
         </span>
-      </button>
+      </button>}
     </div>
   );
 };

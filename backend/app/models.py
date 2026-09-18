@@ -77,6 +77,14 @@ class AuthSession(Base):
     expires_at: Mapped[datetime]
 
 
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    expires_at: Mapped[datetime]
+
+
 class Swipe(Base):
     __tablename__ = "swipes"
     __table_args__ = (

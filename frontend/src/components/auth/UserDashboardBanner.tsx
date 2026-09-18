@@ -1,6 +1,7 @@
 import React from 'react';
 import type { UserProfile } from '../../types/auth';
-import { clearSession } from '../../lib/api';
+import { mediaUrl } from '../../lib/api';
+import { INTENT_LABELS } from '../../lib/intents';
 
 interface UserDashboardBannerProps {
   user: UserProfile;
@@ -20,7 +21,6 @@ export const UserDashboardBanner: React.FC<UserDashboardBannerProps> = ({
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80';
 
   const handleLogoutClick = () => {
-    clearSession();
     onLogout();
   };
 
@@ -39,7 +39,7 @@ export const UserDashboardBanner: React.FC<UserDashboardBannerProps> = ({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
           <img
-            src={avatar}
+            src={mediaUrl(avatar)}
             alt={profile.full_name}
             style={{
               width: '64px',
@@ -91,7 +91,7 @@ export const UserDashboardBanner: React.FC<UserDashboardBannerProps> = ({
               <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>
                 check_circle
               </span>
-              <span>{profile.intent.replace(/_/g, ' ')}</span>
+              <span>{(profile.intents || [profile.intent]).map(intent => INTENT_LABELS[intent]).join(' · ')}</span>
             </div>
           </div>
         </div>

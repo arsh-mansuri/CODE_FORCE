@@ -129,11 +129,11 @@ export const FALLBACK_QUESTIONNAIRE: Questionnaire = {
           used_for: [],
         },
         {
-          field: 'profile.intent',
+          field: 'profile.intents',
           prompt: 'What would help you right now?',
           help_text:
-            'Choose one primary goal. seek_room joins someone who already has a home; seek_roommate finds someone to search together.',
-          input_type: 'single_choice',
+            'Choose all that feel right within one category. You can be open to a room, a whole home, and finding a roommate at the same time. Choosing the other category switches your goals.',
+          input_type: 'multi_choice',
           required: true,
           applies_to: [
             'seek_entire_home',

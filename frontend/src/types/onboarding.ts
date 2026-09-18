@@ -29,6 +29,7 @@ export interface Question {
   applies_to: Intent[];
   options: QuestionOption[];
   used_for: string[];
+  show_when?: Record<string, (string | boolean | number)[]>;
   upload_endpoint?: string | null;
   minimum_files?: number | null;
   maximum_files?: number | null;

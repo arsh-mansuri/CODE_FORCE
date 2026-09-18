@@ -1,416 +1,105 @@
-import React, { useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { AuthResponse } from '../../types/auth';
-import { login } from '../../lib/api';
-import { DEMO_PERSONAS, type DemoPersona } from '../../lib/demoPersonas';
+import { checkEmail, forgotPassword, login } from '../../lib/api';
+import { DEMO_PERSONAS } from '../../lib/demoPersonas';
+import { StepHeader } from './StepHeader';
 
 interface LoginFormProps {
+  initialEmail?: string;
+  existingAccount?: boolean;
   onSuccess: (auth: AuthResponse) => void;
-  onSwitchToSignup: () => void;
+  onSwitchToSignup: (email: string) => void;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onSuccess, onSwitchToSignup }) => {
-  const [email, setEmail] = useState('');
+export function LoginForm({ initialEmail = '', existingAccount = false, onSuccess, onSwitchToSignup }: LoginFormProps) {
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
+  const [step, setStep] = useState<'email' | 'password' | 'forgot' | 'sent'>(existingAccount ? 'password' : 'email');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [unknownEmail, setUnknownEmail] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      setError('Please enter both your email and password.');
-      return;
-    }
+  useEffect(() => {
+    if (!cooldown) return;
+    const timer = window.setTimeout(() => setCooldown(cooldown - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
 
+  function go(next: typeof step) { setError(''); setStep(next); }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (loading) return;
     setLoading(true);
-    setError(null);
+    setError('');
     try {
-      const auth = await login({ email, password });
-      onSuccess(auth);
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please verify credentials.');
-    } finally {
-      setLoading(false);
-    }
-  };
+      const normalized = email.trim().toLowerCase();
+      setEmail(normalized);
+      if (step === 'email') {
+        const { exists } = await checkEmail(normalized);
+        setUnknownEmail(!exists);
+        if (exists) go('password');
+      } else if (step === 'password') {
+        onSuccess(await login({ email: normalized, password }));
+      } else {
+        await forgotPassword(normalized);
+        setCooldown(60);
+        go('sent');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally { setLoading(false); }
+  }
 
-  const handleSelectDemo = (persona: DemoPersona) => {
-    setEmail(persona.email);
-    setPassword(persona.password);
-    setError(null);
-  };
+  async function openDemo(index: number) {
+    const persona = DEMO_PERSONAS[index];
+    setLoading(true);
+    setError('');
+    try { onSuccess(await login({ email: persona.email, password: persona.password }, true)); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Demo unavailable.'); }
+    finally { setLoading(false); }
+  }
 
-  return (
-    <div style={{ padding: '0 20px 32px' }}>
-      {/* Editorial Headline */}
-      <div style={{ marginBottom: '24px', textAlign: 'center' }}>
-        <h2
-          className="font-serif"
-          style={{
-            fontSize: '28px',
-            lineHeight: '36px',
-            fontWeight: 600,
-            color: 'var(--color-on-surface)',
-            letterSpacing: '-0.015em',
-            margin: '0 0 6px',
-          }}
-        >
-          Welcome Back
-        </h2>
-        <p
-          style={{
-            fontSize: '14px',
-            color: 'var(--color-on-surface-variant)',
-            lineHeight: '20px',
-          }}
-        >
-          Log in to continue swiping and chatting with compatible roommates.
-        </p>
-      </div>
-
-      {/* Quick Judge/Demo Personas Bar */}
-      <div
-        style={{
-          background: 'var(--color-surface-container-low)',
-          border: '1px solid var(--color-outline-variant)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '14px',
-          marginBottom: '24px',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            marginBottom: '10px',
-          }}
-        >
-          <span
-            className="material-symbols-outlined filled"
-            style={{ fontSize: '18px', color: 'var(--color-primary)' }}
-          >
-            bolt
-          </span>
-          <span
-            style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-              color: 'var(--color-primary)',
-            }}
-          >
-            Quick Demo Personas (1-Click Fill)
-          </span>
+  return <form className="flow-page" onSubmit={submit}>
+    <div className="flow-content" key={step}>
+      <StepHeader
+        title={step === 'email' ? 'What’s your email?' : step === 'password' ? 'Hey, welcome back.' : step === 'forgot' ? 'Let’s get you back in.' : 'Check your inbox.'}
+        icon={step === 'email' || step === 'sent' ? 'mail' : 'lock'}
+        description={step === 'email' ? 'Your next chapter at home starts here.' : step === 'password' ? 'You already have an account. Simply enter your password to sign in.' : step === 'forgot' ? 'We’ll email you a link to choose a new password.' : `If ${email} has an account, a reset link is on its way. Check your spam folder too. The link is valid for 30 minutes.`}
+      />
+      {(step === 'email' || step === 'forgot') && <label className="flow-label" htmlFor="login-email">Email address
+        <input id="login-email" type="email" autoComplete="email" value={email} required maxLength={320}
+          placeholder="you@example.com" disabled={loading}
+          onChange={e => { setEmail(e.target.value); setUnknownEmail(false); setError(''); }} />
+      </label>}
+      {step === 'password' && <>
+        <div className="email-chip"><span>{email}</span><button type="button" className="text-button" disabled={loading} onClick={() => { setPassword(''); go('email'); }}>Edit</button></div>
+        <label className="flow-label" htmlFor="login-password">Password</label>
+        <div className="password-input">
+          <input id="login-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required maxLength={128} autoComplete="current-password" disabled={loading} />
+          <button className="text-button" type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? 'Hide' : 'Show'}</button>
         </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '8px',
-          }}
-        >
-          {DEMO_PERSONAS.slice(0, 4).map((persona) => {
-            const isSelected = email.toLowerCase() === persona.email.toLowerCase();
-            return (
-              <button
-                key={persona.email}
-                type="button"
-                onClick={() => handleSelectDemo(persona)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 10px',
-                  borderRadius: 'var(--radius-md)',
-                  background: isSelected
-                    ? 'var(--color-primary-fixed)'
-                    : 'var(--color-surface-container-lowest)',
-                  border: isSelected
-                    ? '1.5px solid var(--color-primary)'
-                    : '1px solid var(--color-outline-variant)',
-                  textAlign: 'left',
-                }}
-              >
-                <img
-                  src={persona.avatar}
-                  alt={persona.name}
-                  style={{
-                    width: '30px',
-                    height: '30px',
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    flexShrink: 0,
-                  }}
-                />
-                <div style={{ overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: 'var(--color-on-surface)',
-                      whiteSpace: 'nowrap',
-                      textOverflow: 'ellipsis',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {persona.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '10px',
-                      color: 'var(--color-tertiary)',
-                      whiteSpace: 'nowrap',
-                      textOverflow: 'ellipsis',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {persona.role}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Error Alert */}
-      {error && (
-        <div
-          style={{
-            background: 'var(--color-error-container)',
-            border: '1px solid var(--color-error)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '12px 14px',
-            marginBottom: '20px',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '10px',
-          }}
-        >
-          <span
-            className="material-symbols-outlined filled"
-            style={{ fontSize: '20px', color: 'var(--color-error)' }}
-          >
-            error
-          </span>
-          <span
-            style={{
-              fontSize: '13px',
-              color: 'var(--color-on-error-container)',
-              lineHeight: '18px',
-            }}
-          >
-            {error}
-          </span>
-        </div>
-      )}
-
-      {/* Form */}
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div>
-          <label
-            htmlFor="login-email"
-            style={{
-              display: 'block',
-              fontSize: '13px',
-              fontWeight: 600,
-              color: 'var(--color-on-surface-variant)',
-              marginBottom: '6px',
-            }}
-          >
-            Email Address
-          </label>
-          <div style={{ position: 'relative' }}>
-            <input
-              id="login-email"
-              type="email"
-              placeholder="e.g. demo1@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-              style={{
-                paddingLeft: '40px',
-              }}
-            />
-            <span
-              className="material-symbols-outlined"
-              style={{
-                position: 'absolute',
-                left: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--color-outline)',
-                pointerEvents: 'none',
-                fontSize: '20px',
-              }}
-            >
-              mail
-            </span>
-          </div>
-        </div>
-
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '6px',
-            }}
-          >
-            <label
-              htmlFor="login-password"
-              style={{
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'var(--color-on-surface-variant)',
-              }}
-            >
-              Password
-            </label>
-            <span
-              style={{
-                fontSize: '12px',
-                color: 'var(--color-primary)',
-                cursor: 'pointer',
-                fontWeight: 500,
-              }}
-              onClick={() => alert('Demo passwords are: PropVibe-demo-2026')}
-            >
-              Forgot password?
-            </span>
-          </div>
-          <div style={{ position: 'relative' }}>
-            <input
-              id="login-password"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-              style={{
-                paddingLeft: '40px',
-                paddingRight: '40px',
-              }}
-            />
-            <span
-              className="material-symbols-outlined"
-              style={{
-                position: 'absolute',
-                left: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--color-outline)',
-                pointerEvents: 'none',
-                fontSize: '20px',
-              }}
-            >
-              lock
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute',
-                right: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'transparent',
-                color: 'var(--color-outline)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '4px',
-              }}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                {showPassword ? 'visibility_off' : 'visibility'}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Submit CTA */}
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            marginTop: '8px',
-            height: '48px',
-            borderRadius: 'var(--radius-full)',
-            background: 'var(--color-primary)',
-            color: 'var(--color-on-primary)',
-            fontSize: '15px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            boxShadow: 'var(--shadow-warm)',
-          }}
-        >
-          {loading ? (
-            <>
-              <span
-                className="material-symbols-outlined"
-                style={{
-                  fontSize: '20px',
-                  animation: 'spin 1s linear infinite',
-                }}
-              >
-                progress_activity
-              </span>
-              <span>Authenticating...</span>
-            </>
-          ) : (
-            <>
-              <span>Sign In to PropVibe</span>
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                arrow_forward
-              </span>
-            </>
-          )}
-        </button>
-      </form>
-
-      {/* Switch to Signup */}
-      <div
-        style={{
-          marginTop: '28px',
-          textAlign: 'center',
-          fontSize: '14px',
-          color: 'var(--color-on-surface-variant)',
-        }}
-      >
-        New to PropVibe?{' '}
-        <button
-          type="button"
-          onClick={onSwitchToSignup}
-          style={{
-            background: 'none',
-            color: 'var(--color-primary)',
-            fontWeight: 600,
-            fontSize: '14px',
-            textDecoration: 'underline',
-            padding: 0,
-          }}
-        >
-          Create your Vibe profile
-        </button>
-      </div>
-
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+        <button type="button" className="text-button forgot-link" disabled={loading} onClick={() => go('forgot')}>Forgot password?</button>
+      </>}
+      {unknownEmail && <div className="flow-notice" role="status">We couldn’t find an account with this email. Let’s create one.
+        <button type="button" className="text-button" onClick={() => onSwitchToSignup(email.trim().toLowerCase())}>Create account</button>
+      </div>}
+      {error && <p className="flow-error" role="alert">{error}</p>}
+      {step === 'email' && <details className="demo-details"><summary>Try a demo profile</summary>
+        <p>A sample profile for exploring PropVibe.</p>
+        <div className="choice-grid">{DEMO_PERSONAS.slice(0, 4).map((persona, index) => <button type="button" className="choice-button" key={persona.email} disabled={loading} onClick={() => openDemo(index)}>{persona.name}</button>)}</div>
+      </details>}
     </div>
-  );
-};
+    <footer className="flow-actions">
+      <button className="primary-button" type="submit" disabled={loading || (step === 'sent' && cooldown > 0)}>
+        {loading ? 'One moment…' : step === 'email' ? 'Continue' : step === 'password' ? 'Sign in' : step === 'forgot' ? 'Send reset link' : cooldown ? `Resend in ${cooldown}s` : 'Resend reset link'}
+        <span className="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+      </button>
+      <button className="text-button" type="button" disabled={loading} onClick={() => step === 'email' ? onSwitchToSignup(email) : go(step === 'password' ? 'email' : 'password')}>
+        {step === 'email' ? 'New here? Create account' : step === 'password' ? 'Use another email' : 'Back to sign in'}
+      </button>
+    </footer>
+  </form>;
+}

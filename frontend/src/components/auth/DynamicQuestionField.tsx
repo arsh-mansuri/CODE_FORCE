@@ -1,856 +1,114 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { Question } from '../../types/onboarding';
+import { minimumDate } from '../../lib/dates';
+import { numberLimits } from '../../lib/onboardingValidation';
+import { INTENT_GROUPS, selectedIntents, toggleIntent } from '../../lib/intents';
 
 interface DynamicQuestionFieldProps {
   question: Question;
   value: any;
-  onChange: (val: any) => void;
-  allAnswers?: Record<string, any>;
+  onChange: (value: any) => void;
+  allAnswers: Record<string, any>;
+  disabled?: boolean;
 }
 
-const AVATAR_PRESETS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=800&auto=format&fit=crop&q=80',
-];
-
-const INTENT_META: Record<string, { title: string; subtitle: string; icon: string }> = {
-  seek_roommate: {
-    title: 'Seek Roommate',
-    subtitle: 'Team up with a compatible flatmate to search together',
-    icon: 'group_add',
-  },
-  seek_room: {
-    title: 'Seek Room',
-    subtitle: 'Move into a vacant room in an existing verified flatshare',
-    icon: 'meeting_room',
-  },
-  seek_entire_home: {
-    title: 'Seek Entire Home',
-    subtitle: 'Rent an entire apartment or house directly from provider',
-    icon: 'home',
-  },
-  offer_shared_home: {
-    title: 'Offer Shared Flat',
-    subtitle: 'Fill a vacant room in your current co-living space',
-    icon: 'key',
-  },
-  offer_entire_home: {
-    title: 'Offer Entire Property',
-    subtitle: 'List an entire home or townhouse for tenancy',
-    icon: 'apartment',
-  },
+const intentLabels: Record<string, [string, string, string]> = {
+  seek_roommate: ['Find my people', 'Meet a roommate and find a home together.', 'group_add'],
+  seek_room: ['Find a room', 'Join a home that already has good company.', 'meeting_room'],
+  seek_entire_home: ['Find a whole home', 'A place to make entirely your own.', 'home'],
+  offer_shared_home: ['Share my home', 'Find the right person for your spare room.', 'key'],
+  offer_entire_home: ['List my property', 'Connect your home with its next chapter.', 'apartment'],
 };
 
-export const DynamicQuestionField: React.FC<DynamicQuestionFieldProps> = ({
-  question,
-  value,
-  onChange,
-  allAnswers,
-}) => {
+const humanize = (text: string) => text.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
+
+export function DynamicQuestionField({ question: q, value, onChange, allAnswers, disabled = false }: DynamicQuestionFieldProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [listText, setListText] = useState<string | null>(null);
+  const common = { id: q.field, required: q.required, disabled, 'aria-label': q.prompt };
+  const structuredList = q.field === 'profile.search.location.nearby' || q.field === 'offering.nearby_landmarks';
+  const isIntent = q.field === 'profile.intents';
 
-  // If gender_description is rendered, only show if gender is 'self_described'
-  if (
-    question.field === 'profile.gender_description' &&
-    allAnswers?.['profile.gender'] !== 'self_described'
-  ) {
-    return null;
-  }
-
-  // Format used_for tags for friendly badge display
-  const getBadgeLabel = (tag: string) => {
-    switch (tag) {
-      case 'intent_routing':
-        return 'Intent Routing';
-      case 'hard_filter':
-        return 'Hard Filter';
-      case 'weighted_cosine':
-        return 'Vector Match';
-      case 'irving_rankings':
-        return 'Irving Stable Roommates';
-      case 'rent_valuation_onboarding':
-        return 'Sperner Fair-Rent';
-      case 'mutual_dealbreaker':
-        return 'Double Opt-In';
-      case 'listing_discovery':
-        return 'Listing Discovery';
-      case 'profile_carousel':
-        return 'Vibe Card';
-      default:
-        return tag.replace('_', ' ');
-    }
-  };
-
-  return (
-    <div
-      style={{
-        background: 'var(--color-surface-container-lowest)',
-        borderRadius: 'var(--radius-xl)',
-        border: '1px solid var(--color-outline-variant)',
-        padding: '16px 18px',
-        marginBottom: '14px',
-        boxShadow: '0 2px 6px rgba(32, 27, 23, 0.03)',
-      }}
-    >
-      {/* Question Prompt Header */}
-      <div style={{ marginBottom: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-          <label
-            style={{
-              fontSize: '14.5px',
-              fontWeight: 600,
-              color: 'var(--color-on-surface)',
-              lineHeight: '1.3',
-            }}
-          >
-            {question.prompt}
-          </label>
-          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {question.required && (
-              <span
-                style={{
-                  fontSize: '10px',
-                  fontWeight: 700,
-                  color: 'var(--color-primary)',
-                  background: 'rgba(146, 51, 38, 0.1)',
-                  padding: '2px 6px',
-                  borderRadius: 'var(--radius-full)',
-                  letterSpacing: '0.02em',
-                }}
-              >
-                Required
-              </span>
-            )}
-            {question.used_for?.map((u) => (
-              <span
-                key={u}
-                style={{
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  color: 'var(--color-secondary)',
-                  background: 'var(--color-secondary-container)',
-                  padding: '2px 6px',
-                  borderRadius: 'var(--radius-full)',
-                }}
-              >
-                {getBadgeLabel(u)}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {question.help_text && (
-          <p
-            style={{
-              fontSize: '12px',
-              color: 'var(--color-on-surface-variant)',
-              marginTop: '4px',
-              marginBottom: 0,
-              lineHeight: '1.4',
-            }}
-          >
-            {question.help_text}
-          </p>
-        )}
-      </div>
-
-      {/* Dynamic Input Renderers */}
-      <div style={{ marginTop: '12px' }}>
-        {/* 1. TEXT / EMAIL */}
-        {(question.input_type === 'text' || question.input_type === 'email') && (
-          <input
-            type={question.input_type === 'email' ? 'email' : 'text'}
-            value={value ?? ''}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={`Enter ${question.prompt.toLowerCase()}...`}
-            required={question.required}
-            style={{
-              width: '100%',
-              height: '44px',
-              padding: '0 14px',
-              borderRadius: 'var(--radius-lg)',
-              border: '1px solid var(--color-outline-variant)',
-              background: 'var(--color-surface)',
-              fontSize: '14px',
-              color: 'var(--color-on-surface)',
-              outline: 'none',
-            }}
-          />
-        )}
-
-        {/* 2. PASSWORD */}
-        {question.input_type === 'password' && (
-          <div style={{ position: 'relative' }}>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={value ?? ''}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder="Minimum 10 characters"
-              minLength={10}
-              required={question.required}
-              style={{
-                width: '100%',
-                height: '44px',
-                padding: '0 40px 0 14px',
-                borderRadius: 'var(--radius-lg)',
-                border: '1px solid var(--color-outline-variant)',
-                background: 'var(--color-surface)',
-                fontSize: '14px',
-                color: 'var(--color-on-surface)',
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute',
-                right: '10px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                color: 'var(--color-on-surface-variant)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '4px',
-              }}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>
-                {showPassword ? 'visibility_off' : 'visibility'}
-              </span>
-            </button>
-          </div>
-        )}
-
-        {/* 3. NUMBER */}
-        {question.input_type === 'number' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => onChange(Math.max(1, (Number(value) || 0) - 1))}
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--color-surface-container-high)',
-                border: '1px solid var(--color-outline-variant)',
-                color: 'var(--color-on-surface)',
-                fontSize: '18px',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              −
-            </button>
-            <input
-              type="number"
-              value={value ?? ''}
-              onChange={(e) => onChange(Number(e.target.value))}
-              required={question.required}
-              style={{
-                width: '120px',
-                height: '40px',
-                textAlign: 'center',
-                borderRadius: 'var(--radius-lg)',
-                border: '1px solid var(--color-outline-variant)',
-                background: 'var(--color-surface)',
-                fontSize: '15px',
-                fontWeight: 600,
-                color: 'var(--color-on-surface)',
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => onChange((Number(value) || 0) + 1)}
-              style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--color-surface-container-high)',
-                border: '1px solid var(--color-outline-variant)',
-                color: 'var(--color-on-surface)',
-                fontSize: '18px',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              +
-            </button>
-          </div>
-        )}
-
-        {/* 4. DATE */}
-        {question.input_type === 'date' && (
-          <input
-            type="date"
-            value={value ?? ''}
-            onChange={(e) => onChange(e.target.value)}
-            required={question.required}
-            style={{
-              width: '100%',
-              height: '44px',
-              padding: '0 14px',
-              borderRadius: 'var(--radius-lg)',
-              border: '1px solid var(--color-outline-variant)',
-              background: 'var(--color-surface)',
-              fontSize: '14px',
-              color: 'var(--color-on-surface)',
-            }}
-          />
-        )}
-
-        {/* 5. SINGLE CHOICE */}
-        {question.input_type === 'single_choice' && (
-          <div>
-            {/* Special Intent Cards */}
-            {question.field === 'profile.intent' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {question.options.map((opt) => {
-                  const meta = INTENT_META[opt.value] || {
-                    title: opt.label,
-                    subtitle: '',
-                    icon: 'explore',
-                  };
-                  const isSelected = value === opt.value;
-                  return (
-                    <div
-                      key={opt.value}
-                      onClick={() => onChange(opt.value)}
-                      style={{
-                        padding: '12px 14px',
-                        borderRadius: 'var(--radius-xl)',
-                        border: isSelected
-                          ? '2px solid var(--color-primary)'
-                          : '1px solid var(--color-outline-variant)',
-                        background: isSelected
-                          ? 'rgba(146, 51, 38, 0.05)'
-                          : 'var(--color-surface)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '50%',
-                          background: isSelected ? 'var(--color-primary)' : 'var(--color-surface-container-high)',
-                          color: isSelected ? '#ffffff' : 'var(--color-primary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                          {meta.icon}
-                        </span>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-on-surface)' }}>
-                          {meta.title}
-                        </div>
-                        {meta.subtitle && (
-                          <div style={{ fontSize: '11.5px', color: 'var(--color-on-surface-variant)', marginTop: '2px' }}>
-                            {meta.subtitle}
-                          </div>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          borderRadius: '50%',
-                          border: isSelected ? '5px solid var(--color-primary)' : '2px solid var(--color-outline-variant)',
-                          background: '#ffffff',
-                          flexShrink: 0,
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              /* Standard Pill Options */
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {question.options.map((opt) => {
-                  const isSelected = value === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => onChange(opt.value)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 'var(--radius-full)',
-                        border: isSelected
-                          ? '1.5px solid var(--color-primary)'
-                          : '1px solid var(--color-outline-variant)',
-                        background: isSelected
-                          ? 'rgba(146, 51, 38, 0.08)'
-                          : 'var(--color-surface)',
-                        color: isSelected ? 'var(--color-primary)' : 'var(--color-on-surface)',
-                        fontSize: '13px',
-                        fontWeight: isSelected ? 700 : 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.12s ease',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 6. MULTI CHOICE */}
-        {question.input_type === 'multi_choice' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {question.options.map((opt) => {
-              const currentList: string[] = Array.isArray(value) ? value : [];
-              const isSelected = currentList.includes(opt.value);
-              const toggle = () => {
-                if (isSelected) {
-                  onChange(currentList.filter((v) => v !== opt.value));
-                } else {
-                  onChange([...currentList, opt.value]);
-                }
-              };
-
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={toggle}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: 'var(--radius-full)',
-                    border: isSelected
-                      ? '1.5px solid var(--color-secondary)'
-                      : '1px solid var(--color-outline-variant)',
-                    background: isSelected
-                      ? 'var(--color-secondary-container)'
-                      : 'var(--color-surface)',
-                    color: isSelected
-                      ? 'var(--color-on-secondary-container)'
-                      : 'var(--color-on-surface)',
-                    fontSize: '13px',
-                    fontWeight: isSelected ? 700 : 500,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>
-                    {isSelected ? 'check_circle' : 'add_circle'}
-                  </span>
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* 7. SCALE (1-5 Tactile Rating) */}
-        {question.input_type === 'scale' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '6px', marginBottom: '8px' }}>
-              {[1, 2, 3, 4, 5].map((level) => {
-                const isSelected = Number(value) === level;
-                return (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => onChange(level)}
-                    style={{
-                      flex: 1,
-                      height: '40px',
-                      borderRadius: 'var(--radius-md)',
-                      border: isSelected
-                        ? '2px solid var(--color-primary)'
-                        : '1px solid var(--color-outline-variant)',
-                      background: isSelected
-                        ? 'var(--color-primary)'
-                        : 'var(--color-surface)',
-                      color: isSelected ? '#ffffff' : 'var(--color-on-surface)',
-                      fontWeight: 700,
-                      fontSize: '15px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {level}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--color-on-surface-variant)' }}>
-              <span>1: Low / Relaxed</span>
-              <span>3: Balanced</span>
-              <span>5: High / Strict</span>
-            </div>
-          </div>
-        )}
-
-        {/* 8. BOOLEAN */}
-        {question.input_type === 'boolean' && (
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              type="button"
-              onClick={() => onChange(true)}
-              style={{
-                flex: 1,
-                height: '40px',
-                borderRadius: 'var(--radius-lg)',
-                border: value === true
-                  ? '2px solid var(--color-secondary)'
-                  : '1px solid var(--color-outline-variant)',
-                background: value === true
-                  ? 'var(--color-secondary-container)'
-                  : 'var(--color-surface)',
-                color: value === true
-                  ? 'var(--color-on-secondary-container)'
-                  : 'var(--color-on-surface)',
-                fontWeight: 700,
-                fontSize: '13.5px',
-                cursor: 'pointer',
-              }}
-            >
-              Yes
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange(false)}
-              style={{
-                flex: 1,
-                height: '40px',
-                borderRadius: 'var(--radius-lg)',
-                border: value === false
-                  ? '2px solid var(--color-primary)'
-                  : '1px solid var(--color-outline-variant)',
-                background: value === false
-                  ? 'rgba(146, 51, 38, 0.1)'
-                  : 'var(--color-surface)',
-                color: value === false
-                  ? 'var(--color-primary)'
-                  : 'var(--color-on-surface)',
-                fontWeight: 700,
-                fontSize: '13.5px',
-                cursor: 'pointer',
-              }}
-            >
-              No
-            </button>
-          </div>
-        )}
-
-        {/* 9. LIST */}
-        {question.input_type === 'list' && (
-          <div>
-            <input
-              type="text"
-              value={Array.isArray(value) ? value.join(', ') : (value ?? '')}
-              onChange={(e) => {
-                const list = e.target.value.split(',').map((s) => s.trim());
-                onChange(list);
-              }}
-              placeholder="Separate items with commas..."
-              style={{
-                width: '100%',
-                height: '44px',
-                padding: '0 14px',
-                borderRadius: 'var(--radius-lg)',
-                border: '1px solid var(--color-outline-variant)',
-                background: 'var(--color-surface)',
-                fontSize: '14px',
-                color: 'var(--color-on-surface)',
-              }}
-            />
-            {question.field.includes('location.areas') && (
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-                {['Navrangpura', 'Vastrapur', 'Bodakdev', 'SG Highway', 'Satellite'].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      const cur = Array.isArray(value) ? value : [];
-                      if (!cur.includes(s)) onChange([...cur, s]);
-                    }}
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      borderRadius: 'var(--radius-full)',
-                      background: 'var(--color-surface-container-high)',
-                      border: '1px solid var(--color-outline-variant)',
-                      color: 'var(--color-on-surface)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    + {s}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 10. OBJECT (Budget, Location, Priorities) */}
-        {question.input_type === 'object' && (
-          <div>
-            {/* Budget Range */}
-            {question.field === 'profile.search.budget' && (
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-on-surface-variant)' }}>
-                    MIN (₹/MO)
-                  </label>
-                  <input
-                    type="number"
-                    value={value?.minimum ?? 6000}
-                    onChange={(e) =>
-                      onChange({
-                        ...value,
-                        minimum: Number(e.target.value),
-                      })
-                    }
-                    style={{
-                      width: '100%',
-                      height: '40px',
-                      padding: '0 10px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-outline-variant)',
-                      background: 'var(--color-surface)',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                    }}
-                  />
-                </div>
-                <span style={{ marginTop: '16px', color: 'var(--color-outline)' }}>–</span>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-on-surface-variant)' }}>
-                    MAX (₹/MO)
-                  </label>
-                  <input
-                    type="number"
-                    value={value?.maximum ?? 16000}
-                    onChange={(e) =>
-                      onChange({
-                        ...value,
-                        maximum: Number(e.target.value),
-                      })
-                    }
-                    style={{
-                      width: '100%',
-                      height: '40px',
-                      padding: '0 10px',
-                      borderRadius: 'var(--radius-md)',
-                      border: '1px solid var(--color-outline-variant)',
-                      background: 'var(--color-surface)',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Room Priorities (Sperner Fair-Rent) */}
-            {question.field === 'profile.room_priorities' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {[
-                  { key: 'size', label: 'Room Size', icon: 'square_foot' },
-                  { key: 'private_bathroom', label: 'Private Bathroom', icon: 'bathtub' },
-                  { key: 'balcony', label: 'Balcony / Terrace', icon: 'balcony' },
-                  { key: 'natural_light', label: 'Natural Daylight', icon: 'wb_sunny' },
-                  { key: 'quiet', label: 'Quiet Courtyard', icon: 'nature_people' },
-                ].map((item) => {
-                  const currentVal = value?.[item.key] ?? 3;
-                  return (
-                    <div
-                      key={item.key}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '6px 10px',
-                        borderRadius: 'var(--radius-md)',
-                        background: 'var(--color-surface)',
-                        border: '1px solid var(--color-outline-variant)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--color-primary)' }}>
-                          {item.icon}
-                        </span>
-                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{item.label}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {[1, 2, 3, 4, 5].map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => onChange({ ...value, [item.key]: p })}
-                            style={{
-                              width: '26px',
-                              height: '26px',
-                              borderRadius: '4px',
-                              border: currentVal === p ? '2px solid var(--color-secondary)' : '1px solid var(--color-outline-variant)',
-                              background: currentVal === p ? 'var(--color-secondary)' : 'transparent',
-                              color: currentVal === p ? '#ffffff' : 'var(--color-on-surface)',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Offering Location */}
-            {question.field === 'offering.location' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 600 }}>City</label>
-                  <input
-                    type="text"
-                    value={value?.city ?? 'Ahmedabad'}
-                    onChange={(e) => onChange({ ...value, city: e.target.value })}
-                    style={{ width: '100%', height: '36px', padding: '0 8px', borderRadius: '4px', border: '1px solid var(--color-outline-variant)' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 600 }}>Area</label>
-                  <input
-                    type="text"
-                    value={value?.area ?? 'Navrangpura'}
-                    onChange={(e) => onChange({ ...value, area: e.target.value })}
-                    style={{ width: '100%', height: '36px', padding: '0 8px', borderRadius: '4px', border: '1px solid var(--color-outline-variant)' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 600 }}>PIN Code</label>
-                  <input
-                    type="text"
-                    value={value?.pincode ?? '380009'}
-                    onChange={(e) => onChange({ ...value, pincode: e.target.value })}
-                    style={{ width: '100%', height: '36px', padding: '0 8px', borderRadius: '4px', border: '1px solid var(--color-outline-variant)' }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 11. PHOTOS */}
-        {question.input_type === 'photos' && (
-          <div>
-            <div style={{ fontSize: '12px', color: 'var(--color-on-surface-variant)', marginBottom: '8px' }}>
-              Select your cover profile photo ({question.minimum_files ?? 3}–{question.maximum_files ?? 6} photos supported):
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              {AVATAR_PRESETS.map((preset, idx) => {
-                const isSelected = Array.isArray(value) ? value[0] === preset : value === preset;
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => onChange([preset])}
-                    style={{
-                      position: 'relative',
-                      aspectRatio: '1',
-                      borderRadius: 'var(--radius-lg)',
-                      overflow: 'hidden',
-                      border: isSelected ? '3px solid var(--color-primary)' : '1px solid var(--color-outline-variant)',
-                      cursor: 'pointer',
-                      boxShadow: isSelected ? '0 3px 8px rgba(146, 51, 38, 0.25)' : 'none',
-                    }}
-                  >
-                    <img src={preset} alt={`Avatar ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    {isSelected && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: '4px',
-                          right: '4px',
-                          background: 'var(--color-primary)',
-                          color: '#ffffff',
-                          borderRadius: '50%',
-                          width: '20px',
-                          height: '20px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
-                          check
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {question.upload_endpoint && (
-              <div
-                style={{
-                  marginTop: '8px',
-                  fontSize: '11px',
-                  color: 'var(--color-secondary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
-                  cloud_upload
-                </span>
-                <span>Uploads enabled to: {question.upload_endpoint}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 12. VIDEO */}
-        {question.input_type === 'video' && (
-          <div
-            style={{
-              padding: '12px',
-              borderRadius: 'var(--radius-lg)',
-              background: 'var(--color-surface)',
-              border: '1px dashed var(--color-outline-variant)',
-              textAlign: 'center',
-            }}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: '28px', color: 'var(--color-primary)' }}>
-              videocam
-            </span>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-on-surface)', marginTop: '4px' }}>
-              60-Second Video Introduction
-            </div>
-            <p style={{ fontSize: '11px', color: 'var(--color-on-surface-variant)', margin: '4px 0 0' }}>
-              Optional. Introduce yourself and your daily co-living rhythm.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
+  return <fieldset className="question-input" disabled={disabled} aria-label={q.prompt}>
+    {(q.input_type === 'text' || q.input_type === 'email') && (
+      q.field === 'profile.bio' || q.field === 'offering.description' || q.field.endsWith('.notes') || q.field.endsWith('custom_details')
+        ? <textarea {...common} rows={5} maxLength={q.field === 'offering.description' ? 3000 : q.field === 'profile.bio' ? 1000 : 500} value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder="In your own words…" />
+        : <input {...common} type={q.input_type} value={value ?? ''} onChange={e => onChange(e.target.value)} autoComplete={q.input_type === 'email' ? 'email' : q.field === 'profile.full_name' ? 'name' : 'off'}
+          maxLength={q.input_type === 'email' ? 320 : q.field === 'offering.title' ? 160 : 100} minLength={q.field === 'offering.title' ? 3 : undefined}
+          placeholder={q.input_type === 'email' ? 'you@example.com' : 'Type here…'} />
+    )}
+    {q.input_type === 'password' && <div className="password-input">
+      <input {...common} type={showPassword ? 'text' : 'password'} value={value ?? ''} onChange={e => onChange(e.target.value)} minLength={10} maxLength={128} autoComplete="new-password" />
+      <button type="button" className="text-button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)}>{showPassword ? 'Hide' : 'Show'}</button>
+    </div>}
+    {q.input_type === 'number' && <input {...common} type="number" {...numberLimits(q.field)} value={value ?? ''} onChange={e => onChange(e.target.value === '' ? undefined : Number(e.target.value))} />}
+    {q.input_type === 'date' && <>
+      <input {...common} type="date" min={minimumDate(q.field, allAnswers)} value={value ?? ''} onChange={e => onChange(e.target.value)} />
+      <p className="input-hint">Today or later. {q.field.endsWith('move_in_by') && 'On or after your earliest move-in date.'}</p>
+    </>}
+    {isIntent && <div className="intent-groups">
+      {INTENT_GROUPS.map(group => <fieldset className="intent-group" key={group.label}>
+        <legend>{group.label}</legend><p>{group.description}</p>
+        <div className="intent-choices">{group.values.map(intent => {
+          const selected = (value || []).includes(intent);
+          const meta = intentLabels[intent];
+          return <button type="button" key={intent} className={`choice-button intent-choice ${selected ? 'is-selected' : ''}`} aria-pressed={selected} onClick={() => onChange(toggleIntent(value || [], intent))}>
+            <span className="material-symbols-outlined" aria-hidden="true">{meta[2]}</span>
+            <span className="intent-copy"><strong>{meta[0]}</strong><small>{meta[1]}</small></span>
+            <span className={`intent-checkbox ${selected ? 'is-checked' : ''}`} aria-hidden="true">{selected && <span className="material-symbols-outlined">check</span>}</span>
+          </button>;
+        })}</div>
+      </fieldset>)}
+      <p className="input-hint" role="status">{value?.length || 0} selected · Choose one or more within a category.</p>
+    </div>}
+    {!isIntent && (q.input_type === 'single_choice' || q.input_type === 'multi_choice') && <div className="choice-grid">
+      {q.options.filter(option => q.field !== 'offering.kind' || selectedIntents(allAnswers).includes(option.value === 'entire_home' ? 'offer_entire_home' : 'offer_shared_home')).map(option => {
+        const selected = q.input_type === 'multi_choice' ? (value || []).includes(option.value) : value === option.value;
+        return <button key={option.value} type="button" aria-pressed={selected} className={`choice-button ${selected ? 'is-selected' : ''}`}
+          onClick={() => onChange(q.input_type === 'multi_choice' ? selected ? value.filter((item: string) => item !== option.value) : [...(value || []), option.value] : option.value)}>
+          {option.label}
+        </button>;
+      })}
+    </div>}
+    {q.input_type === 'boolean' && <div className="choice-grid">
+      {[true, false].map(choice => <button key={String(choice)} type="button" className={`choice-button ${value === choice ? 'is-selected' : ''}`} aria-pressed={value === choice} onClick={() => onChange(choice)}>{choice ? 'Yes' : 'No'}</button>)}
+      {!q.required && <button type="button" className={`choice-button ${value == null ? 'is-selected' : ''}`} aria-pressed={value == null} onClick={() => onChange(null)}>No preference / not sure</button>}
+    </div>}
+    {q.input_type === 'scale' && <>
+      <div className="scale-choices">{[1, 2, 3, 4, 5].map(level => <button key={level} type="button" className={`choice-button ${value === level ? 'is-selected' : ''}`} aria-pressed={value === level} onClick={() => onChange(level)}>{level}</button>)}</div>
+      <div className="scale-labels"><span>Low / relaxed</span><span>High / frequent</span></div>
+    </>}
+    {q.input_type === 'list' && !structuredList && <>
+      <input {...common} type="text" value={listText ?? (Array.isArray(value) ? value.join(', ') : value ?? '')} onChange={e => {
+        setListText(e.target.value); onChange(e.target.value.split(',').map(item => item.trim()).filter(Boolean));
+      }} placeholder="Separate items with commas" />
+      <p className="input-hint">Separate each item with a comma. Leave empty for no preference.</p>
+    </>}
+    {q.input_type === 'list' && structuredList && <div className="landmark-list">
+      {(value || []).map((item: Record<string, any>, index: number) => {
+        const patch = (update: Record<string, unknown>) => onChange(value.map((row: object, i: number) => i === index ? { ...row, ...update } : row));
+        const search = q.field === 'profile.search.location.nearby';
+        return <div className="landmark-row" key={index}>
+          <label className="flow-label">Type<select value={item.kind} onChange={e => patch({ kind: e.target.value })}>{(q.options.length ? q.options : [{ value: 'public_transport', label: 'Public transport' }, { value: 'grocery', label: 'Grocery' }, { value: 'park', label: 'Park' }]).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="flow-label">Place name {search && '(optional)'}<input type="text" value={item.name || ''} maxLength={120} required={!search} onChange={e => patch({ name: e.target.value || null })} /></label>
+          <label className="flow-label">{search ? 'Maximum distance (km)' : 'Distance (km)'}<input type="number" min={search ? 0.1 : 0} max={search ? 50 : 100} step="0.1" required value={item[search ? 'max_distance_km' : 'distance_km'] ?? ''} onChange={e => patch({ [search ? 'max_distance_km' : 'distance_km']: e.target.value === '' ? '' : Number(e.target.value) })} /></label>
+          {search && <label className="flow-label">Importance<select value={item.importance} onChange={e => patch({ importance: e.target.value })}><option value="preferred">Nice to have</option><option value="required">Must have</option></select></label>}
+          <button type="button" className="text-button" onClick={() => onChange(value.filter((_: unknown, i: number) => i !== index))}>Remove place</button>
+        </div>;
+      })}
+      <button type="button" className="secondary-button" disabled={(value?.length || 0) >= 10} onClick={() => onChange([...(value || []), { kind: 'public_transport', name: '', ...(q.field === 'profile.search.location.nearby' ? { max_distance_km: 3, importance: 'preferred' } : { distance_km: 1 }) }])}>Add a nearby place</button>
+    </div>}
+    {q.input_type === 'object' && q.field === 'profile.search.budget' && <div className="paired-inputs">
+      {(['minimum', 'maximum'] as const).map(key => <label className="flow-label" key={key}>{key === 'minimum' ? 'From (₹/month)' : 'Up to (₹/month)'}<input type="number" min={key === 'minimum' ? 0 : 0.01} max={10000000} step="0.01" required value={value?.[key] ?? ''} onChange={e => onChange({ ...value, [key]: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>)}
+    </div>}
+    {q.input_type === 'object' && q.field === 'offering.location' && <>
+      {['city', 'area', 'pincode'].map(key => <label className="flow-label" key={key}>{key === 'area' ? 'Neighbourhood' : key === 'pincode' ? 'PIN code' : 'City'}<input type="text" required maxLength={key === 'pincode' ? 6 : 120} pattern={key === 'pincode' ? '[1-9][0-9]{5}' : undefined} inputMode={key === 'pincode' ? 'numeric' : 'text'} value={value?.[key] ?? ''} onChange={e => onChange({ ...value, [key]: e.target.value })} /></label>)}
+    </>}
+    {q.input_type === 'object' && ['profile.room_priorities', 'profile.compatibility_weights'].includes(q.field) && <div className="priority-list">
+      {(q.field === 'profile.room_priorities' ? ['size', 'private_bathroom', 'balcony', 'natural_light', 'quiet'] : ['cleanliness', 'social_energy', 'guests', 'noise_tolerance', 'sleep_schedule', 'work_style', 'diet', 'smokes', 'has_pets']).map(key => <label key={key} className="priority-row">
+        <span>{humanize(key)}<strong>{value?.[key] ?? 3}/5</strong></span><input aria-label={humanize(key)} type="range" min={0} max={5} step={1} value={value?.[key] ?? 3} onChange={e => onChange({ ...value, [key]: Number(e.target.value) })} />
+      </label>)}
+      <p className="input-hint">0 = not important · 5 = very important</p>
+    </div>}
+  </fieldset>;
+}

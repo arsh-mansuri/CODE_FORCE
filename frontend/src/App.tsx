@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AuthResponse, UserProfile } from './types/auth';
 import type { NavTab } from './components/layout/BottomNav';
-import { getStoredUser, clearSession } from './lib/api';
+import { getStoredUser, getStoredToken, getMe, logout, clearSession } from './lib/api';
 import { TopAppBar } from './components/layout/TopAppBar';
 import { BottomNav } from './components/layout/BottomNav';
 import { DiscoveryFeed } from './components/discovery/DiscoveryFeed';
@@ -12,15 +12,37 @@ import './App.css';
 export function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getStoredUser());
   const [activeTab, setActiveTab] = useState<NavTab>('match');
+  const [checkingSession, setCheckingSession] = useState(() => Boolean(getStoredToken()));
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('reset-password') || '');
+
+  useEffect(() => {
+    let active = true;
+    getMe().then(user => { if (active) { setCurrentUser(user); setCheckingSession(false); } });
+    const readResetToken = () => setResetToken(new URLSearchParams(window.location.hash.slice(1)).get('reset-password') || '');
+    window.addEventListener('hashchange', readResetToken);
+    return () => { active = false; window.removeEventListener('hashchange', readResetToken); };
+  }, []);
 
   const handleAuthSuccess = (auth: AuthResponse) => {
     setCurrentUser(auth.user);
+    setActiveTab('match');
   };
 
   const handleLogout = () => {
-    clearSession();
+    void logout();
     setCurrentUser(null);
+    setActiveTab('match');
   };
+
+  if (checkingSession && !resetToken) return <main className="auth-shell"><div className="flow-page"><p role="status">Getting your PropVibe ready…</p></div></main>;
+
+  if (!currentUser || !currentUser.onboarding.complete || resetToken) return <AuthShell
+    currentUser={currentUser} onAuthSuccess={handleAuthSuccess} onUserUpdate={setCurrentUser} onLogout={handleLogout}
+    resetToken={resetToken} onResetDone={() => {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      clearSession(); setCurrentUser(null); setResetToken('');
+    }}
+  />;
 
   return (
     <div className="propvibe-app" style={{ background: 'var(--color-surface)', minHeight: '100vh' }}>
@@ -254,6 +276,7 @@ export function App() {
           <AuthShell
             currentUser={currentUser}
             onAuthSuccess={handleAuthSuccess}
+            onUserUpdate={setCurrentUser}
             onLogout={handleLogout}
           />
         </div>

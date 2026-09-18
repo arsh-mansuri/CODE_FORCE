@@ -155,9 +155,9 @@ def compatibility(viewer: User, candidate: User) -> Compatibility | None:
     if viewer.id == candidate.id:
         return None
     a, b = profile_of(viewer), profile_of(candidate)
-    pair = {a.intent, b.intent}
+    a_goals, b_goals = set(a.selected_intents), set(b.selected_intents)
     shared = False
-    if a.intent == b.intent == Intent.seek_roommate:
+    if Intent.seek_roommate in a_goals and Intent.seek_roommate in b_goals:
         if not searches_overlap(a, b):
             return None
         reasons = ["Shared search area, budget, property types, and move-in window."]
@@ -166,15 +166,19 @@ def compatibility(viewer: User, candidate: User) -> Compatibility | None:
         if any(p.importance == "required" for s in (a.search, b.search) for p in s.location.nearby):
             reasons.append("Required landmark distances must be checked when you choose a property together.")
         shared = True
-    elif pair in (
-        {Intent.seek_entire_home, Intent.offer_entire_home},
-        {Intent.seek_room, Intent.offer_shared_home},
-    ):
+    elif (a.search is not None) != (b.search is not None):
         seeker, provider = (a, candidate) if a.search is not None else (b, viewer)
+        # An offering's actual listing kind determines its rent unit and household.
+        # Saved additional offering goals must never relabel a whole home as a room.
+        if provider.listing is None:
+            return None
+        shared = provider.listing.data["kind"] != "entire_home"
+        required_goal = Intent.seek_room if shared else Intent.seek_entire_home
+        if required_goal not in seeker.selected_intents:
+            return None
         fits, reasons = home_fits(seeker, provider)
         if not fits:
             return None
-        shared = Intent.seek_room in pair
     else:
         return None
     if shared:
@@ -231,7 +235,7 @@ def candidate_view(user: User, score: Compatibility) -> Candidate:
             badges.append(p.lifestyle.diet.value)
     return Candidate(
         id=user.id, full_name=p.full_name, age=p.age, gender=p.gender, occupation=p.occupation,
-        bio=p.bio, intent=p.intent, lifestyle=p.lifestyle,
+        bio=p.bio, intent=p.intent, intents=p.selected_intents, lifestyle=p.lifestyle,
         offering=offering, compatibility=score, match_score=score.score,
         card_type="property" if offering else "person", title=offering.title if offering else p.full_name,
         location=location, media=offering.media if offering else profile_media, profile_media=profile_media,

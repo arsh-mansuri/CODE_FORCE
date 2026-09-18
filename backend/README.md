@@ -56,6 +56,10 @@ Precedence is shell environment, then `backend/.env`, then the repository `.env`
 - `SESSION_DAYS`: bearer session lifetime, 1–30 days; defaults to 7.
 - `MEDIA_ROOT`: persistent directory for media bytes; defaults to `backend/uploads/`.
   Keep this directory together with the SQLite database across server restarts.
+- `FRONTEND_URL`: browser app origin for password-reset links (default `http://localhost:5174`).
+- `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD`,
+  `SMTP_STARTTLS` (true): email transport for password recovery. Without SMTP,
+  recovery returns an actionable 503 instead of claiming an email was sent.
 - `HOST` / `PORT` in the template are hints; use Uvicorn's `--host` / `--port` flags.
 - The reserved Gemini/Groq variables are unused in this MVP. Lease review is
   explicitly labelled `local_heuristic`.
@@ -63,6 +67,32 @@ Precedence is shell environment, then `backend/.env`, then the repository `.env`
 SQLAlchemy also accepts `postgresql+psycopg://...` when `psycopg[binary]` is
 installed. Automated verification here uses SQLite, not a live PostgreSQL server.
 Tables are created with `create_all`; schema migrations are not included yet.
+
+## Guided authentication and recovery
+
+The frontend starts signed-out visitors on a welcome screen, then asks one question
+per page. `POST /api/auth/check-email` accepts `{ "email": "you@example.com" }`
+and returns `{ "exists": true }` to route an existing account straight to password
+sign-in. Email lookup and signup normalize whitespace and case.
+
+`POST /api/auth/forgot-password` accepts an email and sends a 30-minute reset link.
+`POST /api/auth/reset-password` accepts `{ "token": "...", "password": "..." }`.
+Tokens are stored as hashes, consumed atomically once, and invalidate all existing
+sessions after a successful password change. Resends have a one-minute cooldown;
+a new link supersedes previous links. The frontend reads the token from the URL
+fragment, asks for password confirmation, then returns to sign-in.
+
+Move-in and listing availability dates must be today or later on signup/profile/
+listing writes; the latest move-in date must also follow the earliest date. Stored
+historical dates remain readable. Browser calendars use local calendar dates and
+the API independently enforces its current calendar date.
+
+Media onboarding resumes after signing into an incomplete account. Profile photos,
+optional intro video, property photos, and optional walkthrough appear on separate
+pages. Photos/videos are previewed before authenticated multipart upload, and each
+successful upload is saved immediately. Camera capture uses `getUserMedia` over
+HTTPS or localhost, stops camera tracks on exit, and offers a device-camera/file
+picker fallback. Discovery opens after the required galleries are complete.
 
 ## Five signup paths
 
@@ -80,7 +110,18 @@ answer choices, and links to the authoritative validation schema.
 - **`offer_shared_home`**: a resident owner/tenant offering a private room or
   shared space. Requires an offering and lifestyle answers for living together.
 
-One primary intent and one offering per account keep the MVP unambiguous.
+Users can choose multiple goals within **Looking for a place** (all three seeking
+goals) or **Offering a place** (both offering goals). `profile.intents` persists
+these choices; mixing categories and duplicate/empty selections are rejected.
+Legacy clients may omit `intents` and continue using `profile.intent` alone.
+Questions apply when any selected goal needs them, including lifestyle questions
+when shared living is one of several choices. Discovery considers every selected
+seeking goal; roommate cohorts accept anyone who selected `seek_roommate`.
+
+There is one current offering per account. Providers selecting both goals choose
+which space to list first; its actual `kind` determines the primary `intent`, rent
+unit, and matches. Both goals remain saved, and a listing update may switch between
+their selected offering types without presenting whole-home rent as room rent.
 `PUT /api/users/me` can change intent and replace the complete onboarding data
 atomically. Account creation validates all conditional housing/lifestyle answers;
 media is the authenticated second step of onboarding. New and existing accounts

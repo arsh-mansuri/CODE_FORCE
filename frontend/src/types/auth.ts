@@ -69,6 +69,7 @@ export interface HousingSearch {
   move_in_from: string; // YYYY-MM-DD
   move_in_by: string;   // YYYY-MM-DD
   stay_months: number;
+  ac_required?: boolean;
 }
 
 export interface Lifestyle {
@@ -118,6 +119,7 @@ export interface UserProfileInput {
   occupation?: string | null;
   bio: string;
   intent: Intent;
+  intents?: Intent[] | null;
   search?: HousingSearch | null;
   lifestyle?: Lifestyle | null;
   roommate_preferences: RoommatePreferences;
@@ -146,6 +148,8 @@ export interface ListingInput {
   location: ListingLocation;
   monthly_rent: number;
   deposit: number;
+  electricity?: ElectricityBilling | null;
+  air_conditioning?: AirConditioning | null;
   available_from: string;
   minimum_stay_months: number;
   available_spaces: number;
@@ -153,6 +157,32 @@ export interface ListingInput {
   amenities: string[];
   nearby_landmarks: NearbyLandmark[];
   is_active: boolean;
+}
+
+export interface BillSplit {
+  method: 'equal' | 'metered_usage' | 'fixed_percentage' | 'tenant_pays_full' | 'custom';
+  split_between?: number;
+  tenant_share_percentage?: number;
+  custom_details?: string;
+}
+
+export interface ElectricityBilling {
+  billing_method: 'included_in_rent' | 'fixed_monthly' | 'per_kwh' | 'actual_bill';
+  rate_per_kwh?: number;
+  fixed_monthly_amount?: number;
+  split?: BillSplit;
+  notes?: string;
+}
+
+export interface AirConditioning {
+  available: boolean;
+  locations?: string[];
+  billing_method?: 'included_in_rent' | 'included_in_electricity' | 'separate_per_kwh' | 'separate_per_hour' | 'separate_fixed_monthly';
+  rate_per_kwh?: number;
+  rate_per_hour?: number;
+  fixed_monthly_amount?: number;
+  split?: BillSplit;
+  notes?: string;
 }
 
 export interface MediaView {
@@ -185,6 +215,12 @@ export interface OnboardingStatus {
   profile_photos_needed: number;
   property_photos_needed: number;
   next_steps: string[];
+}
+
+export interface MediaResponse {
+  target: 'profile' | 'property';
+  gallery: MediaGallery;
+  onboarding: OnboardingStatus;
 }
 
 export interface ListingView extends ListingInput {

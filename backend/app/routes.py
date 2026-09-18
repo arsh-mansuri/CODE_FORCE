@@ -1,4 +1,5 @@
-from datetime import timezone
+from datetime import date, timedelta, timezone
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Query, Request
@@ -12,17 +13,18 @@ from .lease import analyze_lease
 from .matching import candidate_view, compatibility, listing_view, profile_of, user_view
 from .media_storage import remove_files
 from .media_views import onboarding_status, require_discovery_ready
-from .models import AuthSession, Listing, Match, Message, Profile, RentSession, Swipe, User, new_id, utcnow
+from .models import AuthSession, Listing, Match, Message, PasswordReset, Profile, RentSession, Swipe, User, new_id, utcnow
+from .password_reset import require_reset_email, send_reset_email
 from .onboarding import questionnaire
 from .schemas import (
-    AuthResponse, ErrorResponse, FeedResponse, HealthResponse, Intent, LeaseAnalysis,
+    AuthResponse, EmailRequest, EmailStatus, ErrorResponse, FeedResponse, HealthResponse, Intent, LeaseAnalysis,
     LeaseRequest, ListingFeed, ListingFeedItem, ListingInput, ListingView, LoginRequest,
     MatchView, MessageInput, MessageView, Notice, OnboardingSubmission, Questionnaire,
     RentCalculation, RentRequest, SignupRequest, StablePair, StableRequest, StableResponse,
-    SwipeRequest, SwipeResponse, UserProfile,
+    ResetPasswordRequest, SwipeRequest, SwipeResponse, UserProfile,
 )
 from .security import (
-    DUMMY_HASH, current_session, current_user, hash_password, issue_session, problem, verify_password,
+    DUMMY_HASH, current_session, current_user, hash_password, issue_session, problem, token_digest, verify_password,
 )
 
 
@@ -82,6 +84,21 @@ def apply_onboarding(user: User, body: OnboardingSubmission):
         user.listing.is_active = body.offering.is_active
 
 
+def validate_future_dates(body: OnboardingSubmission):
+    # Validate writes only: saved profiles must remain readable after their dates pass.
+    fields = {}
+    if body.profile.search:
+        fields["profile.search.move_in_from"] = body.profile.search.move_in_from
+        fields["profile.search.move_in_by"] = body.profile.search.move_in_by
+    if body.offering:
+        fields["offering.available_from"] = body.offering.available_from
+    for field, value in fields.items():
+        if value < date.today():
+            error = problem(422, "validation_error", "Choose today or a future date.")
+            error.detail["fields"] = [{"field": field, "message": "Past dates are not allowed."}]
+            raise error
+
+
 @router.get("/health", tags=["Health"], response_model=HealthResponse, summary="Check the API and database")
 def health(db: DB):
     db.execute(text("SELECT 1"))
@@ -110,6 +127,7 @@ def signup(request: Request, body: Annotated[SignupRequest, Body(openapi_example
     Shared-living profiles require lifestyle answers; whole-home providers do not.
     Offerings can disclose electricity rates/split rules and AC availability/charges.
     """
+    validate_future_dates(body)
     if db.scalar(select(User.id).where(User.email == str(body.email))):
         raise problem(409, "email_in_use", "An account already uses this email. Please log in.")
     user = User(email=str(body.email), password_hash=hash_password(body.password.get_secret_value()))
@@ -119,6 +137,50 @@ def signup(request: Request, body: Annotated[SignupRequest, Body(openapi_example
     token, expiry = issue_session(db, user.id, request.app.state.settings.session_days)
     db.commit()
     return AuthResponse(access_token=token, expires_at=expiry, user=user_view(user))
+
+
+@router.post("/auth/check-email", tags=["Authentication"], response_model=EmailStatus)
+def check_email(body: EmailRequest, db: DB):
+    return EmailStatus(exists=db.scalar(select(User.id).where(User.email == str(body.email))) is not None)
+
+
+@router.post("/auth/forgot-password", tags=["Authentication"], response_model=Notice)
+def forgot_password(body: EmailRequest, request: Request, db: DB):
+    settings = request.app.state.settings
+    require_reset_email(settings)
+    notice = Notice(message="If this email has an account, a reset link has been sent. Check your inbox and spam folder.")
+    user = db.scalar(select(User).where(User.email == str(body.email)).with_for_update())
+    if user is None:
+        return notice
+    recent = db.scalar(select(PasswordReset).where(
+        PasswordReset.user_id == user.id, PasswordReset.created_at > utcnow() - timedelta(minutes=1),
+    ))
+    if recent:
+        return notice
+    token = secrets.token_urlsafe(32)
+    db.execute(delete(PasswordReset).where(PasswordReset.user_id == user.id))
+    db.add(PasswordReset(token_hash=token_digest(token), user_id=user.id, expires_at=utcnow() + timedelta(minutes=30)))
+    db.flush()
+    send_reset_email(settings, user.email, token)
+    db.commit()
+    return notice
+
+
+@router.post("/auth/reset-password", tags=["Authentication"], response_model=Notice)
+def reset_password(body: ResetPasswordRequest, db: DB):
+    # Atomic consumption prevents two requests from using the same link.
+    user_id = db.execute(delete(PasswordReset).where(
+        PasswordReset.token_hash == token_digest(body.token.get_secret_value()),
+        PasswordReset.expires_at > utcnow(),
+    ).returning(PasswordReset.user_id)).scalar_one_or_none()
+    if user_id is None:
+        raise problem(400, "invalid_reset_link", "This reset link is invalid or expired. Request a new link.")
+    user = db.get(User, user_id)
+    user.password_hash = hash_password(body.password.get_secret_value())
+    db.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
+    db.execute(delete(PasswordReset).where(PasswordReset.user_id == user_id))
+    db.commit()
+    return Notice(message="Your password has been changed. Sign in with your new password.")
 
 
 @router.post("/auth/login", tags=["Authentication"], response_model=AuthResponse, summary="Sign in and issue a revocable bearer session")
@@ -151,6 +213,7 @@ def update_me(body: OnboardingSubmission, request: Request, user: Account, db: D
     Supports changing intent atomically. A newly incompatible connection is deactivated
     and its swipes removed; changing back requires fresh mutual likes.
     """
+    validate_future_dates(body)
     retired_media = list(user.listing.media_assets) if user.listing and body.offering is None else []
     apply_onboarding(user, body)
     remove_incompatible_connections(db, user)
@@ -217,10 +280,14 @@ def update_listing(body: ListingInput, user: Account, db: DB):
     profile = profile_of(user)
     if profile.intent not in (Intent.offer_entire_home, Intent.offer_shared_home):
         raise problem(409, "offering_intent_required", "Use PUT /api/users/me to change your intent and add an offering together.")
-    expected_entire = profile.intent == Intent.offer_entire_home
-    if (body.kind == "entire_home") != expected_entire:
+    listing_intent = Intent.offer_entire_home if body.kind == "entire_home" else Intent.offer_shared_home
+    if listing_intent not in profile.selected_intents:
         raise problem(422, "listing_intent_mismatch", "The listing kind must match your whole-home or shared-home intent.")
-    apply_onboarding(user, OnboardingSubmission(profile=profile, offering=body))
+    if profile.intent != listing_intent:
+        profile = profile.model_copy(update={"intent": listing_intent})
+    submission = OnboardingSubmission(profile=profile, offering=body)
+    validate_future_dates(submission)
+    apply_onboarding(user, submission)
     remove_incompatible_connections(db, user)
     db.commit()
     return listing_view(user.listing)
@@ -354,8 +421,8 @@ def stable_matching(body: StableRequest, user: Account, db: DB):
         person = db.get(User, person_id)
         if person is None:
             raise problem(404, "participant_not_found", "A participant is unavailable.")
-        if profile_of(person).intent != Intent.seek_roommate:
-            raise problem(422, "invalid_stable_intent", "Stable roommate cohorts contain only seek_roommate profiles.")
+        if Intent.seek_roommate not in profile_of(person).selected_intents:
+            raise problem(422, "invalid_stable_intent", "Everyone in a stable roommate cohort must include finding a roommate in their selected goals.")
         if person.id != user.id:
             connection = pair_match(db, user.id, person.id)
             if connection is None or not connection.is_active or compatibility(user, person) is None:

@@ -17,6 +17,13 @@ class Settings:
     max_photo_bytes: int = 10 * 1024 * 1024
     max_video_bytes: int = 50 * 1024 * 1024
     max_video_seconds: int = 60
+    frontend_url: str = "http://localhost:5174"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -36,4 +43,11 @@ class Settings:
             allowed_origins=origins,
             session_days=days,
             media_root=Path(os.getenv("MEDIA_ROOT", str(BACKEND_DIR / "uploads"))).expanduser().resolve(),
+            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5174").rstrip("/"),
+            smtp_host=os.getenv("SMTP_HOST", ""),
+            smtp_port=int(os.getenv("SMTP_PORT", "587")),
+            smtp_username=os.getenv("SMTP_USERNAME", ""),
+            smtp_password=os.getenv("SMTP_PASSWORD", ""),
+            smtp_from=os.getenv("SMTP_FROM", ""),
+            smtp_starttls=os.getenv("SMTP_STARTTLS", "true").lower() == "true",
         )

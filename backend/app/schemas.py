@@ -165,6 +165,7 @@ class UserProfileInput(Schema):
     occupation: str | None = Field(default=None, min_length=1, max_length=100)
     bio: str = Field(default="", max_length=1000)
     intent: Intent
+    intents: list[Intent] | None = Field(default=None, min_length=1, max_length=3, description="Selected goals within one category (seeking or offering). Omit for legacy single-intent profiles. intent identifies the current listing/primary goal.")
     search: HousingSearch | None = None
     lifestyle: Lifestyle | None = None
     roommate_preferences: RoommatePreferences = Field(default_factory=RoommatePreferences)
@@ -173,17 +174,27 @@ class UserProfileInput(Schema):
 
     @model_validator(mode="after")
     def intent_fields(self):
+        goals = set(self.selected_intents)
+        if self.intents is not None:
+            if len(goals) != len(self.intents) or self.intent not in goals:
+                raise ValueError("Choose distinct goals and include the primary intent.")
+            if not (goals <= SEEKING or goals <= OFFERING):
+                raise ValueError("Select multiple goals within either looking for a place or offering a place, not both categories.")
         if self.intent in SEEKING and self.search is None:
             raise ValueError("A housing search is required when looking for a home, room, or roommate.")
         if self.intent in OFFERING and self.search is not None:
             raise ValueError("Offering profiles describe location and rent in offering, not search.")
-        if self.intent in SHARING and self.lifestyle is None:
+        if goals & SHARING and self.lifestyle is None:
             raise ValueError("Lifestyle answers are required for shared-living discovery.")
         if self.gender != Gender.self_described and self.gender_description:
             raise ValueError("gender_description is only used with self_described gender.")
-        if self.intent not in SHARING and self.roommate_preferences != RoommatePreferences():
+        if not goals & SHARING and self.roommate_preferences != RoommatePreferences():
             raise ValueError("Roommate preferences apply to shared homes; whole-home discovery uses housing requirements.")
         return self
+
+    @property
+    def selected_intents(self) -> list[Intent]:
+        return self.intents if self.intents is not None else [self.intent]
 
 
 class ListingLocation(Schema):
@@ -336,6 +347,24 @@ class LoginRequest(Schema):
     password: SecretStr = Field(min_length=1, max_length=128)
 
 
+class EmailRequest(Schema):
+    email: EmailStr
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalise_email(cls, value):
+        return value.strip().casefold() if isinstance(value, str) else value
+
+
+class EmailStatus(Schema):
+    exists: bool
+
+
+class ResetPasswordRequest(Schema):
+    token: SecretStr = Field(min_length=32, max_length=128)
+    password: SecretStr = Field(min_length=10, max_length=128)
+
+
 class MediaTarget(str, Enum):
     profile = "profile"
     property = "property"
@@ -460,6 +489,7 @@ class Candidate(Schema):
     occupation: str | None
     bio: str
     intent: Intent
+    intents: list[Intent] = Field(default_factory=list)
     lifestyle: Lifestyle | None
     offering: ListingView | None
     compatibility: Compatibility

@@ -3,6 +3,8 @@ import type {
   PropertyType,
   SignupRequest,
 } from '../types/auth';
+import { localDate } from './dates';
+import { selectedIntents } from './intents';
 
 /**
  * Get initial default answers for dynamic questions
@@ -17,21 +19,22 @@ export function getDefaultAnswers(): Record<string, any> {
     email: '',
     password: '',
     'profile.full_name': '',
-    'profile.age': 24,
+    'profile.age': undefined,
     'profile.gender': 'prefer_not_to_say',
     'profile.gender_description': '',
     'profile.occupation': '',
     'profile.bio': '',
     'profile.intent': 'seek_roommate' as Intent,
+    'profile.intents': ['seek_roommate'] as Intent[],
 
     // Search fields
-    'profile.search.location.city': 'Ahmedabad',
-    'profile.search.location.areas': ['Navrangpura', 'Vastrapur'],
-    'profile.search.location.pincodes': ['380009'],
+    'profile.search.location.city': '',
+    'profile.search.location.areas': [],
+    'profile.search.location.pincodes': [],
     'profile.search.budget': { minimum: 6000, maximum: 16000 },
     'profile.search.property_types': ['1bhk', '2bhk'] as PropertyType[],
-    'profile.search.move_in_from': nextWeek.toISOString().split('T')[0],
-    'profile.search.move_in_by': nextMonth.toISOString().split('T')[0],
+    'profile.search.move_in_from': localDate(nextWeek),
+    'profile.search.move_in_by': localDate(nextMonth),
     'profile.search.stay_months': 12,
 
     // Lifestyle fields
@@ -74,30 +77,26 @@ export function getDefaultAnswers(): Record<string, any> {
     },
 
     // Offering fields
-    'offering.title': 'Sunlit Flat with Balcony in Navrangpura',
-    'offering.description': 'Quiet room near transport and cafes.',
+    'offering.title': '',
+    'offering.description': '',
     'offering.kind': 'private_room',
     'offering.property_type': '2bhk',
     'offering.provider_relationship': 'tenant',
     'offering.location': {
-      city: 'Ahmedabad',
-      area: 'Navrangpura',
-      pincode: '380009',
+      city: '',
+      area: '',
+      pincode: '',
     },
     'offering.monthly_rent': 12000,
     'offering.deposit': 12000,
-    'offering.available_from': nextWeek.toISOString().split('T')[0],
+    'offering.available_from': localDate(nextWeek),
     'offering.minimum_stay_months': 6,
     'offering.available_spaces': 1,
     'offering.furnishing': 'semi_furnished',
-    'offering.amenities': ['balcony', 'wi_fi', 'in_unit_laundry'],
+    'offering.amenities': [],
     'offering.nearby_landmarks': [],
     'offering.is_active': true,
 
-    // Avatar / photos
-    'media.profile.photos': [
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80',
-    ],
   };
 }
 
@@ -105,9 +104,12 @@ export function getDefaultAnswers(): Record<string, any> {
  * Builds the strict SignupRequest payload expected by FastAPI backend
  */
 export function buildSignupPayload(answers: Record<string, any>): SignupRequest {
-  const intent: Intent = answers['profile.intent'] || 'seek_roommate';
+  const intents = selectedIntents(answers);
+  const intent: Intent = intents[0]?.startsWith('offer_')
+    ? answers['offering.kind'] === 'entire_home' ? 'offer_entire_home' : 'offer_shared_home'
+    : intents[0] || 'seek_roommate';
   const isSeeking = ['seek_entire_home', 'seek_room', 'seek_roommate'].includes(intent);
-  const isSharing = ['seek_room', 'seek_roommate', 'offer_shared_home'].includes(intent);
+  const isSharing = intents.some(value => ['seek_room', 'seek_roommate', 'offer_shared_home'].includes(value));
   const isOffering = ['offer_entire_home', 'offer_shared_home'].includes(intent);
 
   // Search construction
@@ -133,18 +135,19 @@ export function buildSignupPayload(answers: Record<string, any>): SignupRequest 
     searchPayload = {
       location: {
         city: answers['profile.search.location.city'] || 'Ahmedabad',
-        areas: areasList.length > 0 ? areasList : ['Navrangpura'],
-        pincodes: pincodesList.length > 0 ? pincodesList : ['380009'],
-        nearby: [],
+        areas: areasList.filter(Boolean),
+        pincodes: pincodesList.filter(Boolean),
+        nearby: answers['profile.search.location.nearby'] || [],
       },
       budget: {
-        minimum: Number(budget.minimum || 6000),
-        maximum: Number(budget.maximum || 16000),
+        minimum: Number(budget.minimum ?? 0),
+        maximum: Number(budget.maximum),
       },
       property_types: Array.isArray(propertyTypes) && propertyTypes.length > 0 ? propertyTypes : ['1bhk'],
       move_in_from: answers['profile.search.move_in_from'],
       move_in_by: answers['profile.search.move_in_by'],
       stay_months: Number(answers['profile.search.stay_months'] || 12),
+      ac_required: Boolean(answers['profile.search.ac_required']),
     };
   }
 
@@ -203,19 +206,21 @@ export function buildSignupPayload(answers: Record<string, any>): SignupRequest 
       },
       monthly_rent: Number(answers['offering.monthly_rent'] || 12000),
       deposit: Number(answers['offering.deposit'] || 0),
+      electricity: buildElectricity(answers),
+      air_conditioning: buildAirConditioning(answers),
       available_from: answers['offering.available_from'],
       minimum_stay_months: Number(answers['offering.minimum_stay_months'] || 1),
       available_spaces: kind === 'entire_home' ? 1 : Number(answers['offering.available_spaces'] || 1),
       furnishing: answers['offering.furnishing'] || 'unfurnished',
       amenities: answers['offering.amenities'] || [],
-      nearby_landmarks: [],
+      nearby_landmarks: answers['offering.nearby_landmarks'] || [],
       is_active: answers['offering.is_active'] !== false,
     };
   }
 
   const gender = answers['profile.gender'] || 'prefer_not_to_say';
   const genderDesc =
-    gender === 'self_described' ? answers['profile.gender_description'] || null : null;
+    gender === 'self_described' ? answers['profile.gender_description']?.trim() || null : null;
 
   return {
     email: answers.email.trim().toLowerCase(),
@@ -225,9 +230,10 @@ export function buildSignupPayload(answers: Record<string, any>): SignupRequest 
       age: Number(answers['profile.age']),
       gender,
       gender_description: genderDesc,
-      occupation: answers['profile.occupation'] ? answers['profile.occupation'].trim() : null,
+      occupation: answers['profile.occupation']?.trim() || null,
       bio: answers['profile.bio'] ? answers['profile.bio'].trim() : '',
       intent,
+      intents,
       search: searchPayload,
       lifestyle: lifestylePayload,
       roommate_preferences: roommatePreferences,
@@ -251,5 +257,42 @@ export function buildSignupPayload(answers: Record<string, any>): SignupRequest 
       },
     },
     offering: offeringPayload,
+  };
+}
+
+function buildSplit(answers: Record<string, any>, path: string) {
+  const method = answers[`${path}.method`];
+  return {
+    method,
+    ...(method === 'equal' ? { split_between: Number(answers[`${path}.split_between`]) } : {}),
+    ...(method === 'fixed_percentage' ? { tenant_share_percentage: Number(answers[`${path}.tenant_share_percentage`]) } : {}),
+    ...(method === 'custom' ? { custom_details: answers[`${path}.custom_details`] } : {}),
+  };
+}
+
+function buildElectricity(answers: Record<string, any>) {
+  const path = 'offering.electricity';
+  const method = answers[`${path}.billing_method`];
+  if (!method) return null;
+  return {
+    billing_method: method,
+    ...(method === 'per_kwh' ? { rate_per_kwh: Number(answers[`${path}.rate_per_kwh`]) } : {}),
+    ...(method === 'fixed_monthly' ? { fixed_monthly_amount: Number(answers[`${path}.fixed_monthly_amount`]) } : {}),
+    ...(method !== 'included_in_rent' ? { split: buildSplit(answers, `${path}.split`) } : {}),
+    ...(answers[`${path}.notes`] ? { notes: answers[`${path}.notes`] } : {}),
+  };
+}
+
+function buildAirConditioning(answers: Record<string, any>) {
+  const path = 'offering.air_conditioning';
+  const available = answers[`${path}.available`];
+  if (available == null) return null;
+  if (!available) return { available: false };
+  const method = answers[`${path}.billing_method`];
+  const rate = ({ separate_per_kwh: 'rate_per_kwh', separate_per_hour: 'rate_per_hour', separate_fixed_monthly: 'fixed_monthly_amount' } as Record<string, string>)[method];
+  return {
+    available: true, locations: answers[`${path}.locations`] || [], billing_method: method,
+    ...(rate ? { [rate]: Number(answers[`${path}.${rate}`]), split: buildSplit(answers, `${path}.split`) } : {}),
+    ...(answers[`${path}.notes`] ? { notes: answers[`${path}.notes`] } : {}),
   };
 }

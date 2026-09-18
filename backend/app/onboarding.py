@@ -53,7 +53,7 @@ def questionnaire(settings: Settings) -> Questionnaire:
             q("profile.gender_description", "Would you like to describe that in your own words?", "text", "Optional, only when gender is self_described. Not used for algorithmic inference."),
             q("profile.occupation", "What keeps you busy most days?", "text", "Optional work or study description."),
             q("profile.bio", "What would you like a future housemate or provider to know?", "text", "Optional introduction, up to 1,000 characters."),
-            q("profile.intent", "What would help you right now?", "single_choice", "Choose one primary goal. seek_room joins someone who already has a home; seek_roommate finds someone to search together.", required=True, choices=[v.value for v in Intent], used_for=["intent_routing"]),
+            q("profile.intents", "What would help you right now?", "multi_choice", "Choose all that feel right within one category. You can be open to a room, a whole home, and finding a roommate at the same time. Choosing the other category switches your goals.", required=True, choices=[v.value for v in Intent], used_for=["intent_routing"]),
         ]),
         QuestionSection(id="search", title="Your next home", questions=[
             q("profile.search.location.city", "Which city would work for you?", "text", "One city for this search.", required=True, applies_to=SEEK, used_for=["hard_filter"]),
@@ -94,7 +94,7 @@ def questionnaire(settings: Settings) -> Questionnaire:
     offering = [
         ("title", "How would you describe the space in one line?", "text", "3–160 characters.", True, ()),
         ("description", "What else should someone know about the home?", "text", "Optional details, up to 3,000 characters.", False, ()),
-        ("kind", "Are you offering the whole home or space within it?", "single_choice", "Whole-home intent requires entire_home; shared-home intent requires private_room or shared_room.", True, ("entire_home", "private_room", "shared_room")),
+        ("kind", "Which space would you like to list first?", "single_choice", "Tell us about your current listing. If you selected both offering goals, your other goal stays saved on your profile.", True, ("entire_home", "private_room", "shared_room")),
         ("property_type", "What's the layout of the whole home?", "single_choice", "Choose the flat layout even if offering just one room.", True, tuple(v.value for v in PropertyType)),
         ("provider_relationship", "Do you own this home or currently rent it?", "single_choice", "This is self-reported; it is not an ownership verification badge.", True, ("owner", "tenant")),
         ("location", "Where is the home?", "object", "Provide city, area, and six-digit pincode. An exact street address is not needed for discovery.", True, ()),

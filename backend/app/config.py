@@ -18,10 +18,11 @@ class Settings:
     allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS
     session_days: int = 7
     media_root: Path = BACKEND_DIR / "uploads"
+    public_dir: Path = BACKEND_DIR / "public"
     max_photo_bytes: int = 10 * 1024 * 1024
     max_video_bytes: int = 50 * 1024 * 1024
     max_video_seconds: int = 60
-    frontend_url: str = "http://localhost:5174"
+    frontend_url: str = "http://localhost:8000"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -47,7 +48,7 @@ class Settings:
             allowed_origins=origins,
             session_days=days,
             media_root=Path(os.getenv("MEDIA_ROOT", str(BACKEND_DIR / "uploads"))).expanduser().resolve(),
-            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5174").rstrip("/"),
+            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:8000").rstrip("/"),
             smtp_host=os.getenv("SMTP_HOST", ""),
             smtp_port=int(os.getenv("SMTP_PORT", "587")),
             smtp_username=os.getenv("SMTP_USERNAME", ""),

@@ -1,4 +1,4 @@
-"""Seed the Ahmedabad demo catalog; --for-team also enables it for the four team accounts."""
+"""Seed three photographed properties and Rishi's seeker account; optionally enable the team."""
 import argparse
 from copy import deepcopy
 from datetime import date, timedelta
@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.database import Base, make_engine, session_factory
-from app.demo_media import add_demo_gallery
+from app.demo_media import add_demo_gallery, property_photo_paths, sync_property_gallery
 from app.examples import signup_example
 from app.matching import compatibility
 from app.media_storage import remove_files
@@ -15,9 +15,9 @@ from app.models import User
 from app.routes import apply_onboarding
 from app.schemas import Intent, SignupRequest, UserProfileInput
 from app.security import hash_password
-from seed_team import TEAM_ACCOUNTS, TEAM_DISCOVERY_INTENTS
+from seed_team import DEFAULT_PASSWORD, TEAM_ACCOUNTS, TEAM_DISCOVERY_INTENTS
 
-MOCK_PROPERTIES = [
+LEGACY_PROPERTIES = [
     {
         "name": "Aarav Shah",
         "email": "aarav.shah@example.com",
@@ -578,11 +578,48 @@ MOCK_PROPERTIES = [
 ]
 
 
+# One whole flat, one private room and one shared room, each with its own photo set.
+MOCK_PROPERTIES = [
+    {**LEGACY_PROPERTIES[0], "image_set": "p1"},
+    {**LEGACY_PROPERTIES[3], "image_set": "p2"},
+    {**LEGACY_PROPERTIES[4], "image_set": "p3"},
+]
+RISHI_EMAIL = "rc.rishi.pc@gmail.com"
+
+
+def ensure_rishi(db, settings, created_files, retired_files):
+    user = db.scalar(select(User).where(User.email == RISHI_EMAIL))
+    data = signup_example(Intent.seek_roommate, "Rishi")
+    data.update(email=RISHI_EMAIL, password=DEFAULT_PASSWORD)
+    if user is None:
+        user = User(email=RISHI_EMAIL, password_hash=hash_password(DEFAULT_PASSWORD))
+        apply_onboarding(user, SignupRequest.model_validate(data))
+        db.add(user)
+    profile = user.profile.data
+    user.profile.data = UserProfileInput.model_validate({
+        **profile,
+        "intent": profile["intent"] if profile["intent"] in [i.value for i in TEAM_DISCOVERY_INTENTS] else Intent.seek_room.value,
+        "intents": [i.value for i in TEAM_DISCOVERY_INTENTS],
+        "search": profile.get("search") or data["profile"]["search"],
+        "lifestyle": profile.get("lifestyle") or data["profile"]["lifestyle"],
+    }).model_dump(mode="json")
+    if user.listing is not None:
+        retired_files.extend(user.listing.media_assets)
+        user.listing = None
+    db.flush()
+    add_demo_gallery(db, user, "profile", settings, 1, created_files)
+    return user
+
+
 def seed_more(settings: Settings | None = None, *, for_team: bool = False):
     settings = settings or Settings.from_env()
+    # Fail before touching the database if any required source photo is missing.
+    for prop in MOCK_PROPERTIES:
+        property_photo_paths(prop["image_set"])
     settings.media_root.mkdir(parents=True, exist_ok=True)
     engine = make_engine(settings.database_url)
     created_files = []
+    retired_files = []
     summary = []
     try:
         Base.metadata.create_all(engine)
@@ -601,6 +638,18 @@ def seed_more(settings: Settings | None = None, *, for_team: bool = False):
                             **profile.model_dump(mode="json"), "intents": goals,
                         }).model_dump(mode="json")
                         team.append(user)
+
+                rishi = ensure_rishi(db, settings, created_files, retired_files)
+                if rishi not in team:
+                    team.append(rishi)
+
+                # Retire only known old seed offerings, preserving their activity.
+                selected_emails = {prop["email"] for prop in MOCK_PROPERTIES}
+                retired_emails = ({prop["email"] for prop in LEGACY_PROPERTIES} - selected_emails) | {"demo6@example.com", "demo8@example.com"}
+                for user in db.scalars(select(User).where(User.email.in_(retired_emails))):
+                    if user.listing is not None:
+                        user.listing.is_active = False
+                        user.listing.data = {**user.listing.data, "is_active": False}
 
                 providers = []
                 for idx, prop in enumerate(MOCK_PROPERTIES, start=9):
@@ -622,7 +671,7 @@ def seed_more(settings: Settings | None = None, *, for_team: bool = False):
                     apply_onboarding(user, body)
                     db.flush()
                     for target in ("profile", "property"):
-                        add_demo_gallery(db, user, target, settings, idx, created_files)
+                        sync_property_gallery(db, user, target, settings, prop["image_set"], created_files, retired_files)
                     db.flush()
                     db.expire(user, ["media_assets"])
                     db.expire(user.listing, ["media_assets"])
@@ -641,9 +690,11 @@ def seed_more(settings: Settings | None = None, *, for_team: bool = False):
                 db.rollback()
                 remove_files(settings.media_root, created_files)
                 raise
+        remove_files(settings.media_root, retired_files)
     finally:
         engine.dispose()
-    print(f"Seeded {len(MOCK_PROPERTIES)} Ahmedabad demo properties with complete provider and property galleries.")
+    print(f"Seeded {len(MOCK_PROPERTIES)} Ahmedabad demo properties using p1, p2 and p3 in both provider and property galleries.")
+    print(f"Seeker: {RISHI_EMAIL} (new accounts use the team demo password).")
     for email, count, top in summary:
         print(f"{email}: {count} catalog properties, {top} top matches (85%+).")
     return summary

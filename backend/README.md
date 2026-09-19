@@ -2,7 +2,24 @@
 
 A working, local-first MVP for intent-based housing and roommate discovery.
 This guide describes the implemented backend contract. The project vision in
-`SOUL.md` and `README 2.md` also includes longer-term frontend and AI features.
+`SOUL.md` and the [root README](../README.md) also includes longer-term frontend and AI features.
+
+## Run the complete app
+
+Follow the [root quick start](../README.md#quick-start-run-the-entire-app-on-one-server)
+to install dependencies, then from `frontend/` run:
+
+```bash
+npm run build
+npm run server
+```
+
+Vite writes the React build into `backend/public/`; FastAPI serves it at
+**http://localhost:8000**, with the API at `/api` on the same origin. Client-side
+page routes fall back to `index.html`; missing API endpoints and assets retain
+their error responses. Build before starting the server. The frontend defaults to
+`VITE_API_URL=/api`; update any old tunnel URL in frontend environment settings
+and rebuild. The generated `public/` directory is replaced on each build.
 
 ## Start locally
 
@@ -57,7 +74,8 @@ Precedence is shell environment, then `backend/.env`, then the repository `.env`
 - `SESSION_DAYS`: bearer session lifetime, 1–30 days; defaults to 7.
 - `MEDIA_ROOT`: persistent directory for media bytes; defaults to `backend/uploads/`.
   Keep this directory together with the SQLite database across server restarts.
-- `FRONTEND_URL`: browser app origin for password-reset links (default `http://localhost:5174`).
+- `FRONTEND_URL`: browser app origin for password-reset links (default `http://localhost:8000`).
+  Use `http://localhost:5174` for Vite development or the public origin for deployment.
 - `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD`,
   `SMTP_STARTTLS` (true): email transport for password recovery. Without SMTP,
   recovery returns an actionable 503 instead of claiming an email was sent.
@@ -296,69 +314,74 @@ From `backend/`, with the backend environment activated, run:
 python seed_more_listings.py --for-team
 ```
 
-This upserts the 16-property Ahmedabad demo catalog and adds `seek_room` and
+This upserts the three-property Ahmedabad demo catalog and adds `seek_room` and
 `seek_entire_home` goals alongside the four accounts' existing roommate goals.
 It preserves their IDs, passwords, active sessions, search preferences, photos,
 swipes, matches and messages. Use this command for existing team accounts rather
 than the full-reset command above. Missing team accounts cause a clear error.
 
-Provider records are validated through the signup schema and receive complete,
-labelled demo property/profile galleries. Shared-home demo hosts have explicit
+Provider records are validated through the signup schema. Both their provider
+and property galleries use the supplied JPEGs from `backend/uploads/`: `p1.jpeg`,
+`p1i1.jpeg`, `p1i2.jpeg` for the whole flat; the corresponding `p2` files for the
+private room; and `p3` files for the shared room. The base photo is the cover.
+Shared-home demo hosts have explicit
 lifestyle answers so normal ranking produces strong matches. The command checks
 that all four accounts receive catalog results and at least one 85%+ result,
 then prints their counts. Exact matches and alternatives with compromises both
-remain available. Reruns retain provider/listing IDs and existing photos, fill
-partial galleries, and preserve connection activity. Any failure rolls back
+remain available. Reruns retain provider/listing IDs and matching photo IDs,
+replace old generated provider illustrations with the selected photos, repair
+partial galleries, and preserve connection activity. Extra offerings from the
+previous seed catalog are paused. Any failure rolls back
 database changes and removes new upload files.
 
 Refresh Curated Flats after seeding (or reload the app to refresh saved profile
 goals). Existing sessions continue to work. `python seed_more_listings.py` without
-the flag only seeds the property catalog.
+the flag seeds the property catalog and ensures Rishi is a seeker.
 
 ## Five-minute demo
 
-Run `python seed_db.py` once. It creates these demo-only accounts:
-
-- `demo1@example.com` through `demo4@example.com`: people searching together.
-  These four newly seeded accounts have mutual likes and active connections.
-- `demo5@example.com`: looking to join an existing flatshare.
-- `demo6@example.com`: tenant offering one room in a 2BHK.
-- `demo7@example.com`: looking for an entire home.
-- `demo8@example.com`: owner offering an entire 2BHK.
-
-**Demo-only password:** `PropVibe-demo-2026`.
-
-The seed command leaves existing accounts and their choices unchanged on reruns.
-Only newly created roommate accounts are connected to one another.
-New demo accounts include three locally generated, clearly labelled **demo
-illustrations** per required gallery, so the demo works offline. These are not
-represented as genuine person/property photographs. To add them to entirely empty
-galleries of accounts created before media support, run:
+Run from `backend/` with the backend environment activated:
 
 ```bash
-python seed_db.py --fill-missing-media
+python seed_db.py
 ```
 
-Existing uploads, profiles, and swipe choices are preserved.
+This creates or updates three offerings and the seeker:
+
+- `rc.rishi.pc@gmail.com` — Rishi, seeking roommates, rooms and whole homes.
+  New account demo password: `1234567890`; an existing password is preserved.
+- `aarav.shah@example.com` — whole flat, photo set `p1`.
+- `rohan.parekh@example.com` — private room, photo set `p2`.
+- `kabir.mehta@example.com` — shared room, photo set `p3`.
+
+New provider demo password: `PropVibe-demo-2026`. Existing passwords, sessions,
+and connection activity are preserved. Only three seed offerings remain active;
+extra offerings from older seed runs are paused. Other users' listings are untouched.
+
+The nine source JPEGs must be present in `backend/uploads/`, even when `MEDIA_ROOT`
+points elsewhere. Seeding validates and copies them into managed media with
+thumbnails, leaving the originals intact. Provider and property cards use the
+same selected photo set. Rishi's missing profile photos use labelled demo
+illustrations. Reruns repair galleries; `--fill-missing-media` remains accepted.
 
 1. Open `/docs`, inspect `/api/onboarding/questions`, and try a signup example.
    All five JSON payloads are in Swagger's example dropdown. For a new account,
    authorize with its token and complete the required photo uploads next.
-2. Log in as `demo5@example.com`. Copy `access_token`, click **Authorize**, and
+2. Log in as `rc.rishi.pc@gmail.com`. Copy `access_token`, click **Authorize**, and
    paste it without adding the word `Bearer`.
 3. Get `/api/list` and `/api/listings`. The offered room appears with photos,
    name/location, a match score, and compatibility explanations. Like the
    offering's `owner_id` via `/api/swipe`.
-4. Log in and authorize as `demo6@example.com`, then like demo5's ID. A match ID
+4. Log in and authorize as the chosen provider, then like Rishi's ID. A match ID
    is returned. Post/read `/api/matches/{match_id}/messages`.
-5. Log in as demo1, read `/api/matches`, and send all four roommate user IDs
-   (including demo1) to `/api/matching/stable`.
+5. For a four-person roommate demo, run `seed_team.py`, then
+   `seed_more_listings.py --for-team`, and use the team IDs with `/api/matching/stable`.
 6. Try the `/api/rent-harmony/calculate` example. Inspect total rent, room
    allocation, max envy, tolerance, method, and affordability.
 7. Try `/api/lease/analyze` to see the offline risk-discussion fallback.
 
-Seeded roommate feeds are empty by default because they have already swiped on
-one another. Use `/api/users/feed?include_seen=true` to display those cards.
+No likes are pre-seeded. Use `/api/users/feed?include_seen=true` to redisplay cards
+after swiping during a demo.
 
 ## How the algorithms are used
 

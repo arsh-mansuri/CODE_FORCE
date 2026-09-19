@@ -11,7 +11,11 @@ from app.schemas import Intent
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app(Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", media_root=tmp_path / "uploads"))
+    return create_app(Settings(
+        database_url=f"sqlite:///{tmp_path / 'test.db'}",
+        media_root=tmp_path / "uploads",
+        public_dir=tmp_path / "public",
+    ))
 
 
 def photo_bytes(index=0):

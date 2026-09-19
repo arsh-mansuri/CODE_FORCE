@@ -1,9 +1,16 @@
 import pytest
+from hashlib import sha256
+from io import BytesIO
+
+from PIL import Image, ImageOps
 from sqlalchemy import func, select
 
+import seed_db
 import seed_more_listings
 import seed_team
 from app.models import Listing, MediaAsset, User
+from app.demo_media import property_photo_paths
+from app.media_storage import jpeg_bytes
 from app.schemas import Intent
 from test_seed_team import assert_mutual_discovery, login_team
 
@@ -79,11 +86,11 @@ def test_catalog_reaches_all_four_accounts_and_reruns_preserve_existing_data(app
 def test_failed_catalog_seed_rolls_back_team_goal_updates_and_files(app, client, monkeypatch):
     accounts = legacy_team(app, client)
     original_files = set(app.state.settings.media_root.iterdir())
-    add_gallery = seed_more_listings.add_demo_gallery
+    add_gallery = seed_more_listings.sync_property_gallery
     def fail_after_gallery(*args, **kwargs):
         add_gallery(*args, **kwargs)
         raise RuntimeError("Simulated failure")
-    monkeypatch.setattr(seed_more_listings, "add_demo_gallery", fail_after_gallery)
+    monkeypatch.setattr(seed_more_listings, "sync_property_gallery", fail_after_gallery)
     with pytest.raises(RuntimeError, match="Simulated failure"):
         seed_more_listings.seed_more(app.state.settings, for_team=True)
     assert set(app.state.settings.media_root.iterdir()) == original_files
@@ -91,3 +98,83 @@ def test_failed_catalog_seed_rolls_back_team_goal_updates_and_files(app, client,
         assert client.get("/api/users/me", headers=headers).json() == original
     with app.state.session_factory() as db:
         assert db.scalar(select(func.count()).select_from(Listing)) == 0
+
+
+def test_main_seed_uses_uploaded_photos_and_rishi_can_discover_three_properties(app, client):
+    seed_db.seed(settings=app.state.settings)
+    login = client.post("/api/auth/login", json={"email": seed_more_listings.RISHI_EMAIL, "password": "1234567890"})
+    assert login.status_code == 200
+    data = login.json()
+    headers = {"Authorization": f"Bearer {data['access_token']}"}
+    assert data["user"]["onboarding"]["complete"]
+    assert set(data["user"]["profile"]["intents"]) == {i.value for i in seed_team.TEAM_DISCOVERY_INTENTS}
+    feed = client.get("/api/listings", headers=headers).json()
+    assert feed["total"] == 3
+    with app.state.session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(User)) == 4
+        assert db.scalar(select(User).where(User.email == seed_more_listings.RISHI_EMAIL)).listing is None
+        for prop in seed_more_listings.MOCK_PROPERTIES:
+            user = db.scalar(select(User).where(User.email == prop["email"]))
+            expected = []
+            for path in property_photo_paths(prop["image_set"]):
+                with Image.open(path) as source:
+                    image = ImageOps.exif_transpose(source).convert("RGB")
+                    image.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                    expected.append(sha256(jpeg_bytes(image, (2048, 2048))).hexdigest())
+            for target in ("profile", "property"):
+                photos = sorted((a for a in user.media_assets if a.target == target), key=lambda a: a.position)
+                assert [a.checksum for a in photos] == expected
+                for photo in photos:
+                    response = client.get(f"/api/media/files/{photo.id}")
+                    assert response.status_code == 200
+                    assert sha256(response.content).hexdigest() == photo.checksum
+                    thumb = client.get(f"/api/media/files/{photo.id}/thumbnail")
+                    assert thumb.status_code == 200
+                    with Image.open(BytesIO(thumb.content)) as image:
+                        assert max(image.size) <= 480
+    files = set(app.state.settings.media_root.iterdir())
+    seed_db.seed(settings=app.state.settings)
+    assert set(app.state.settings.media_root.iterdir()) == files
+    assert client.get("/api/listings", headers=headers).json() == feed
+
+
+def test_seed_migrates_old_galleries_and_offerings_transactionally(app, client, register, monkeypatch):
+    _, rishi_headers, _ = register(Intent.offer_entire_home, mutate=lambda data: data.update(email=seed_more_listings.RISHI_EMAIL))
+    host, host_headers, _ = register(Intent.offer_entire_home, mutate=lambda data: data.update(email="aarav.shah@example.com"))
+    old, old_headers, _ = register(Intent.offer_entire_home, mutate=lambda data: data.update(email="devang.joshi@example.com"))
+    outsider, outsider_headers, _ = register(Intent.offer_entire_home)
+    originals = {email: client.get("/api/users/me", headers=headers).json() for email, headers in (
+        ("rishi", rishi_headers), ("host", host_headers), ("old", old_headers), ("outsider", outsider_headers),
+    )}
+    root = app.state.settings.media_root
+    original_files = set(root.iterdir())
+    with app.state.session_factory() as db:
+        host_files = [root / name for asset in db.scalars(select(MediaAsset).where(MediaAsset.owner_id == host["user"]["id"]))
+                      for name in (asset.filename, asset.thumbnail_filename)]
+    sync_gallery = seed_more_listings.sync_property_gallery
+
+    def fail_after_replacement(*args, **kwargs):
+        sync_gallery(*args, **kwargs)
+        raise RuntimeError("Replacement failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(seed_more_listings, "sync_property_gallery", fail_after_replacement)
+        with pytest.raises(RuntimeError, match="Replacement failure"):
+            seed_db.seed(settings=app.state.settings)
+    assert set(root.iterdir()) == original_files
+    assert client.get("/api/users/me", headers=rishi_headers).json() == originals["rishi"]
+    assert client.get("/api/users/me", headers=host_headers).json() == originals["host"]
+    assert client.get("/api/users/me", headers=old_headers).json() == originals["old"]
+
+    seed_db.seed(settings=app.state.settings)
+    rishi = client.get("/api/users/me", headers=rishi_headers).json()
+    assert rishi["offering"] is None
+    assert rishi["onboarding"]["complete"]
+    assert rishi["media"] == originals["rishi"]["media"]
+    current_host = client.get("/api/users/me", headers=host_headers).json()
+    assert current_host["offering"]["id"] == host["user"]["offering"]["id"]
+    assert all(not path.exists() for path in host_files)
+    assert not client.get("/api/users/me", headers=old_headers).json()["offering"]["is_active"]
+    assert client.get("/api/users/me", headers=outsider_headers).json() == outsider["user"]
+    with app.state.session_factory() as db:
+        assert db.scalar(select(func.count()).select_from(Listing).where(Listing.is_active)) == 4

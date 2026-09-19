@@ -5,7 +5,7 @@ import type { ListingFeed, OfferingView } from '../types/feed';
 import { DEMO_PERSONAS } from './demoPersonas';
 import type { CreatePropertyReview, PropertyReview, PropertyReviewFeed, ReviewedProperty, ReviewSort } from '../types/reviews';
 
-const rawApiUrl = (import.meta.env.VITE_API_URL || 'https://stadium-administered-boats-minister.trycloudflare.com').replace(/\/$/, '');
+const rawApiUrl = (import.meta.env.VITE_API_URL?.trim() || '/api').replace(/\/+$/, '');
 const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 const TOKEN_KEY = 'propvibe_token';
 const USER_KEY = 'propvibe_user';

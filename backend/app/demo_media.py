@@ -1,13 +1,58 @@
-"""Offline demo illustrations, clearly labelled rather than posing as real photos."""
+"""Seed galleries from supplied property photos and labelled profile illustrations."""
 from dataclasses import asdict
 from io import BytesIO
 
 from fastapi import UploadFile
 from PIL import Image, ImageDraw, ImageFont
 
+from .config import BACKEND_DIR
 from .media_storage import prepare_photo, remove_files
 from .media_views import gallery_assets
 from .models import MediaAsset
+
+
+def property_photo_paths(image_set: str):
+    """Seed originals live beside the backend, independently of MEDIA_ROOT."""
+    paths = [BACKEND_DIR / "uploads" / f"{image_set}{suffix}.jpeg" for suffix in ("", "i1", "i2")]
+    for path in paths:
+        if not path.is_file():
+            raise FileNotFoundError(f"Missing seed property photo: {path}")
+    return paths
+
+
+def sync_property_gallery(db, user, target, settings, image_set, created_files, retired_files):
+    """Use exactly the chosen three photos, keeping unchanged media IDs on reruns."""
+    existing = gallery_assets(user, target)
+    retained = set()
+    for position, path in enumerate(property_photo_paths(image_set)):
+        with path.open("rb") as source:
+            upload = UploadFile(filename=path.name, file=source, size=path.stat().st_size)
+            # These fixed, curated seed files bypass the upload face heuristic
+            # (which flags p1's facade), but retain decoding/size validation.
+            prepared = prepare_photo(upload, settings)
+        asset = next((a for a in existing if a.kind == "photo" and a.checksum == prepared.checksum), None)
+        if asset is not None and all((settings.media_root / name).is_file() for name in (asset.filename, asset.thumbnail_filename)):
+            remove_files(settings.media_root, [prepared])
+        else:
+            created_files.append(prepared)
+            if asset is not None:
+                retired_files.append(asset)
+                db.delete(asset)
+                db.flush()
+                existing.remove(asset)
+            asset = MediaAsset(
+                **asdict(prepared), owner_id=user.id,
+                listing_id=user.listing.id if target == "property" else None,
+                target=target,
+            )
+            db.add(asset)
+        asset.position = position
+        asset.caption = f"Seed property photo: {path.name}"
+        retained.add(asset.id)
+    for asset in existing:
+        if asset.id not in retained:
+            retired_files.append(asset)
+            db.delete(asset)
 
 
 def demo_photo(target: str, name: str, variant: int, palette: int) -> bytes:

@@ -14,6 +14,7 @@ from .media_routes import router as media_router
 from .review_routes import router as review_router
 from .routes import router, feed, swipe, listings
 from .upload_limits import UploadLimitMiddleware
+from .spa import SPAStaticFiles
 
 
 DESCRIPTION = """
@@ -127,4 +128,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_api_route("/users/feed", feed, methods=["GET"], include_in_schema=False)
     app.add_api_route("/swipe", swipe, methods=["POST"], include_in_schema=False)
     app.add_api_route("/listings", listings, methods=["GET"], include_in_schema=False)
+    # Register last so API routes, media, and Swagger retain precedence.
+    # Backend-only development remains available before the first frontend build.
+    if settings.public_dir.is_dir():
+        app.mount("/", SPAStaticFiles(directory=settings.public_dir, html=True), name="frontend")
     return app

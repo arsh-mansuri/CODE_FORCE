@@ -19,12 +19,15 @@ ENV/
 *.db
 *.sqlite3
 propvibe.db
-backend/uploads/
+backend/uploads/*
+!backend/uploads/p[1-3].jpeg
+!backend/uploads/p[1-3]i[1-2].jpeg
 
 # Node & Frontend
 node_modules/
 dist/
 dist-ssr/
+backend/public/
 *.local
 npm-debug.log*
 yarn-debug.log*

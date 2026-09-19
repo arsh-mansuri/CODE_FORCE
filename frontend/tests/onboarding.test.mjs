@@ -23,10 +23,12 @@ const combinations = group => Array.from({ length: (1 << group.length) - 1 }, (_
 test('every supported goal combination has at most ten essential signup questions', () => {
   const payloads = [];
   for (const intents of [...combinations(['seek_roommate', 'seek_room', 'seek_entire_home']), ...combinations(['offer_shared_home', 'offer_entire_home'])]) {
-    const answers = { ...mapper.getDefaultAnswers(), email: 'new@example.com', password: 'a-long-password',
+    const answers = {
+      ...mapper.getDefaultAnswers(), email: 'new@example.com', password: 'a-long-password',
       'profile.full_name': 'New Person', 'profile.age': 24, 'profile.intents': intents, 'profile.intent': intents[0],
       'profile.search.location.city': 'Ahmedabad', 'offering.location': { city: 'Ahmedabad', area: 'Naranpura', pincode: '380013' },
-      'offering.kind': intents[0] === 'offer_entire_home' ? 'entire_home' : 'private_room' };
+      'offering.kind': intents[0] === 'offer_entire_home' ? 'entire_home' : 'private_room'
+    };
     const steps = signupSteps(fallback, answers);
     assert.equal(steps.length, 10, intents.join(', '));
     assert.ok(!steps.some(({ question }) => question.field.includes('lifestyle') || question.field.includes('nearby')));
@@ -60,20 +62,26 @@ test('both nearby editors render every API landmark choice, including older empt
   for (const field of ['profile.search.location.nearby', 'offering.nearby_landmarks']) {
     const question = fallback.sections.flatMap(s => s.questions).find(q => q.field === field);
     for (const options of [question.options, []]) {
-      const html = renderToStaticMarkup(createElement(DynamicQuestionField, { question: { ...question, options },
-        value: [{ kind: 'mosque', name: 'Local place', max_distance_km: 2, distance_km: 2, importance: 'preferred' }], allAnswers: {}, onChange() {} }));
+      const html = renderToStaticMarkup(createElement(DynamicQuestionField, {
+        question: { ...question, options },
+        value: [{ kind: 'mosque', name: 'Local place', max_distance_km: 2, distance_km: 2, importance: 'preferred' }], allAnswers: {}, onChange() { }
+      }));
       for (const option of question.options) assert.ok(html.includes(`value="${option.value}"`), option.value);
     }
   }
 });
 
 test('changing utility billing drops irrelevant rates and split fields', () => {
-  const electricity = mapper.buildElectricity({ 'offering.electricity.billing_method': 'included_in_rent',
-    'offering.electricity.rate_per_kwh': 12, 'offering.electricity.split.method': 'equal', 'offering.electricity.split.split_between': 3 });
+  const electricity = mapper.buildElectricity({
+    'offering.electricity.billing_method': 'included_in_rent',
+    'offering.electricity.rate_per_kwh': 12, 'offering.electricity.split.method': 'equal', 'offering.electricity.split.split_between': 3
+  });
   assert.deepEqual(electricity, { billing_method: 'included_in_rent' });
-  const ac = mapper.buildAirConditioning({ 'offering.air_conditioning.available': false,
+  const ac = mapper.buildAirConditioning({
+    'offering.air_conditioning.available': false,
     'offering.air_conditioning.billing_method': 'separate_per_hour', 'offering.air_conditioning.rate_per_hour': 25,
-    'offering.air_conditioning.notes': 'Repairs pending' });
+    'offering.air_conditioning.notes': 'Repairs pending'
+  });
   assert.deepEqual(ac, { available: false, notes: 'Repairs pending' });
 });
 
@@ -95,3 +103,6 @@ test('refinement starts at two distinct passes and dismissal/profile saves persi
   assert.equal(history.shouldRefine(history.historyFor('a'), 5), false);
   delete globalThis.localStorage;
 });
+
+
+//test commit 222

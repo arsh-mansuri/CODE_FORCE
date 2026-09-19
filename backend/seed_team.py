@@ -26,6 +26,7 @@ TEAM_ACCOUNTS = (
     ("rctest1@gmail.com", "RC Test"),
     ("arsh2.mansuri2@gmail.com", "Arsh Mansuri"),
 )
+TEAM_DISCOVERY_INTENTS = (Intent.seek_roommate, Intent.seek_room, Intent.seek_entire_home)
 
 
 def seed(settings: Settings | None = None) -> None:
@@ -50,6 +51,7 @@ def seed(settings: Settings | None = None) -> None:
                 for index, (email, name) in enumerate(TEAM_ACCOUNTS):
                     data = signup_example(Intent.seek_roommate, name, index + 1)
                     data.update(email=email, password=DEFAULT_PASSWORD)
+                    data["profile"]["intents"] = [intent.value for intent in TEAM_DISCOVERY_INTENTS]
                     data["profile"]["bio"] = (
                         "Team demo profile: looking for a tidy, relaxed shared home "
                         "in Ahmedabad with clear expectations and friendly roommates."
@@ -90,6 +92,7 @@ def seed(settings: Settings | None = None) -> None:
         print(f"Reset: {email}")
     print("All four accounts are ready. Sign in again with the shared demo password.")
     print("Each account can discover the other three; mutual likes create matches and chat.")
+    print("Room and whole-home discovery are enabled. Run seed_more_listings.py --for-team for the property catalog.")
 
 
 if __name__ == "__main__":

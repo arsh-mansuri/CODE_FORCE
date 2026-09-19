@@ -272,7 +272,7 @@ Every run recreates these four accounts with the demo password **`1234567890`**:
 - `rctest1@gmail.com`
 - `arsh2.mansuri2@gmail.com`
 
-All four search for roommates in Ahmedabad with overlapping budgets, areas,
+All four search for roommates, rooms, and whole homes in Ahmedabad with overlapping budgets, areas,
 property types, and freshly generated future move-in dates. Their shared lifestyle
 answers give each pair a 100% compatibility score, while room priorities differ.
 Three labelled demo illustrations per person complete photo onboarding.
@@ -287,6 +287,33 @@ Sign out and back in after running it. Each account starts with the other three
 eligible for its discovery deck (use the default discovery filters). Like each
 other to create matches and unlock chat. Running the script again clears those
 choices so you can repeat the demo.
+
+### Populate Curated Flats for the four existing accounts
+
+From `backend/`, with the backend environment activated, run:
+
+```bash
+python seed_more_listings.py --for-team
+```
+
+This upserts the 16-property Ahmedabad demo catalog and adds `seek_room` and
+`seek_entire_home` goals alongside the four accounts' existing roommate goals.
+It preserves their IDs, passwords, active sessions, search preferences, photos,
+swipes, matches and messages. Use this command for existing team accounts rather
+than the full-reset command above. Missing team accounts cause a clear error.
+
+Provider records are validated through the signup schema and receive complete,
+labelled demo property/profile galleries. Shared-home demo hosts have explicit
+lifestyle answers so normal ranking produces strong matches. The command checks
+that all four accounts receive catalog results and at least one 85%+ result,
+then prints their counts. Exact matches and alternatives with compromises both
+remain available. Reruns retain provider/listing IDs and existing photos, fill
+partial galleries, and preserve connection activity. Any failure rolls back
+database changes and removes new upload files.
+
+Refresh Curated Flats after seeding (or reload the app to refresh saved profile
+goals). Existing sessions continue to work. `python seed_more_listings.py` without
+the flag only seeds the property catalog.
 
 ## Five-minute demo
 

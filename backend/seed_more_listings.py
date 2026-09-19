@@ -1,17 +1,21 @@
-"""Seed 16 comprehensive Indian (Ahmedabad) mock listings into the PropVibe database."""
-import os
-import sys
+"""Seed the Ahmedabad demo catalog; --for-team also enables it for the four team accounts."""
+import argparse
+from copy import deepcopy
 from datetime import date, timedelta
 from sqlalchemy import select
 
 from app.config import Settings
 from app.database import Base, make_engine, session_factory
 from app.demo_media import add_demo_gallery
+from app.examples import signup_example
+from app.matching import compatibility
 from app.media_storage import remove_files
-from app.media_views import gallery_assets
-from app.models import Listing, Profile, User
-from app.schemas import Intent
+from app.media_views import onboarding_status
+from app.models import User
+from app.routes import apply_onboarding
+from app.schemas import Intent, SignupRequest, UserProfileInput
 from app.security import hash_password
+from seed_team import TEAM_ACCOUNTS, TEAM_DISCOVERY_INTENTS
 
 MOCK_PROPERTIES = [
     {
@@ -574,59 +578,78 @@ MOCK_PROPERTIES = [
 ]
 
 
-def seed_more():
-    settings = Settings.from_env()
+def seed_more(settings: Settings | None = None, *, for_team: bool = False):
+    settings = settings or Settings.from_env()
     settings.media_root.mkdir(parents=True, exist_ok=True)
     engine = make_engine(settings.database_url)
-    Base.metadata.create_all(engine)
+    created_files = []
+    summary = []
+    try:
+        Base.metadata.create_all(engine)
+        with session_factory(engine)() as db:
+            try:
+                team = []
+                if for_team:
+                    for email, _ in TEAM_ACCOUNTS:
+                        user = db.scalar(select(User).where(User.email == email))
+                        if user is None or user.profile is None or not user.profile.data.get("search"):
+                            raise RuntimeError(f"Team seeker {email} is missing. Create the team accounts with seed_team.py first.")
+                        profile = UserProfileInput.model_validate(user.profile.data)
+                        goals = list(dict.fromkeys([*profile.selected_intents, *TEAM_DISCOVERY_INTENTS]))
+                        # Assign a new JSON object so SQLAlchemy persists the change.
+                        user.profile.data = UserProfileInput.model_validate({
+                            **profile.model_dump(mode="json"), "intents": goals,
+                        }).model_dump(mode="json")
+                        team.append(user)
 
-    with session_factory(engine)() as db:
-        created_files = []
-        try:
-            for idx, prop in enumerate(MOCK_PROPERTIES, start=9):
-                email = prop["email"]
-                existing = db.scalar(select(User).where(User.email == email))
-                if existing is not None:
-                    print(f"Updating existing provider: {email} -> {prop['offering']['title']}")
-                    user = existing
-                    if user.listing:
-                        user.listing.data = prop["offering"]
-                        user.listing.is_active = True
-                    if user.profile:
-                        user.profile.data["full_name"] = prop["name"]
-                        user.profile.data["bio"] = f"Verified host in {prop['offering']['location']['area']}, Ahmedabad."
-                else:
-                    profile_data = {
-                        "full_name": prop["name"],
-                        "age": 28 + (idx % 12),
-                        "gender": "prefer_not_to_say",
-                        "occupation": "Property Host & Resident",
-                        "bio": f"Verified offering provider in {prop['offering']['location']['area']}, Ahmedabad.",
-                        "intent": prop["intent"].value,
-                        "intents": [prop["intent"].value],
-                    }
-                    user = User(email=email, password_hash=hash_password("PropVibe-demo-2026"))
-                    user.profile = Profile(data=profile_data)
-                    user.listing = Listing(data=prop["offering"], is_active=True)
-                    db.add(user)
+                providers = []
+                for idx, prop in enumerate(MOCK_PROPERTIES, start=9):
+                    data = signup_example(prop["intent"], prop["name"], idx)
+                    data["email"] = prop["email"]
+                    data["profile"].update(
+                        age=28 + (idx % 12), occupation="Demo Property Host & Resident",
+                        bio=f"Demo property host in {prop['offering']['location']['area']}, Ahmedabad.",
+                        intents=[prop["intent"].value],
+                    )
+                    # Shared-home hosts have explicit demo lifestyle answers so
+                    # the normal ranking algorithm can produce 85%+ matches.
+                    data["offering"] = deepcopy(prop["offering"])
+                    body = SignupRequest.model_validate(data)
+                    user = db.scalar(select(User).where(User.email == str(body.email)))
+                    if user is None:
+                        user = User(email=str(body.email), password_hash=hash_password(body.password.get_secret_value()))
+                        db.add(user)
+                    apply_onboarding(user, body)
                     db.flush()
-                    print(f"Created provider: {email} -> {prop['offering']['title']}")
-
-                # Add demo photos for property and profile if missing
-                for target in ["profile", "property"]:
-                    if not gallery_assets(user, target):
+                    for target in ("profile", "property"):
                         add_demo_gallery(db, user, target, settings, idx, created_files)
-                        print(f"  Added demo {target} gallery: {email}")
+                    db.flush()
+                    db.expire(user, ["media_assets"])
+                    db.expire(user.listing, ["media_assets"])
+                    if not onboarding_status(user).complete:
+                        raise RuntimeError(f"Incomplete demo provider galleries: {user.email}")
+                    providers.append(user)
 
-            db.commit()
-            print(f"\nSuccessfully seeded {len(MOCK_PROPERTIES)} Indian Ahmedabad mock properties!")
-        except Exception:
-            db.rollback()
-            remove_files(settings.media_root, created_files)
-            raise
-        finally:
-            engine.dispose()
+                for user in team:
+                    scores = [score for provider in providers if (score := compatibility(user, provider)) is not None]
+                    top = sum(score.score >= 85 for score in scores)
+                    if not scores or not top:
+                        raise RuntimeError(f"Demo catalog has no 85%+ results for {user.email}; check their saved search preferences.")
+                    summary.append((user.email, len(scores), top))
+                db.commit()
+            except Exception:
+                db.rollback()
+                remove_files(settings.media_root, created_files)
+                raise
+    finally:
+        engine.dispose()
+    print(f"Seeded {len(MOCK_PROPERTIES)} Ahmedabad demo properties with complete provider and property galleries.")
+    for email, count, top in summary:
+        print(f"{email}: {count} catalog properties, {top} top matches (85%+).")
+    return summary
 
 
 if __name__ == "__main__":
-    seed_more()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--for-team", action="store_true", help="Add room and whole-home search goals to the four existing team accounts, preserving IDs, sessions, photos and activity.")
+    seed_more(for_team=parser.parse_args().for_team)

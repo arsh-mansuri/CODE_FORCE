@@ -51,7 +51,9 @@ def test_team_reset_restores_login_and_discovery_without_touching_other_accounts
             if user["id"] != other["id"]:
                 response = client.post("/api/swipe", headers=headers, json={"target_id": other["id"], "direction": "like"})
                 assert response.status_code == 200
-    assert client.get("/api/users/feed", headers=first_headers).json()["total"] == 0
+    remaining_ids = {card["id"] for card in client.get("/api/users/feed", headers=first_headers).json()["items"]}
+    assert not remaining_ids.intersection(user["id"] for user, _ in accounts)
+    assert outsider["user"]["id"] in remaining_ids  # Whole-home discovery is enabled too.
     matches = client.get("/api/matches", headers=first_headers).json()
     assert len(matches) == 3
     assert client.post(f"/api/matches/{matches[0]['id']}/messages", headers=first_headers, json={"content": "Demo chat"}).status_code == 201

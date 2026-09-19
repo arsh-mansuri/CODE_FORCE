@@ -5,7 +5,8 @@ from io import BytesIO
 from fastapi import UploadFile
 from PIL import Image, ImageDraw, ImageFont
 
-from .media_storage import prepare_photo
+from .media_storage import prepare_photo, remove_files
+from .media_views import gallery_assets
 from .models import MediaAsset
 
 
@@ -40,13 +41,22 @@ def demo_photo(target: str, name: str, variant: int, palette: int) -> bytes:
 
 def add_demo_gallery(db, user, target, settings, palette, created_files):
     name = user.listing.data["title"] if target == "property" else user.profile.data["full_name"]
-    for position in range(3):
-        data = demo_photo(target, name, position, palette)
+    existing = [asset for asset in gallery_assets(user, target) if asset.kind == "photo"]
+    checksums = {asset.checksum for asset in existing}
+    count = len(existing)
+    position = max((asset.position for asset in existing), default=-1) + 1
+    for variant in range(3):
+        if count >= 3:
+            break
+        data = demo_photo(target, name, variant, palette)
         upload = UploadFile(filename="demo.jpg", file=BytesIO(data), size=len(data))
         try:
             prepared = prepare_photo(upload, settings, target=target)
         finally:
             upload.file.close()
+        if prepared.checksum in checksums:
+            remove_files(settings.media_root, [prepared])
+            continue
         created_files.append(prepared)
         asset = MediaAsset(
             **asdict(prepared), owner_id=user.id,
@@ -54,3 +64,6 @@ def add_demo_gallery(db, user, target, settings, palette, created_files):
             target=target, position=position, caption=f"Generated demo illustration: {target} view {position + 1}",
         )
         db.add(asset)
+        checksums.add(prepared.checksum)
+        count += 1
+        position += 1

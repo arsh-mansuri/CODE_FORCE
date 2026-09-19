@@ -73,15 +73,15 @@ export interface HousingSearch {
 }
 
 export interface Lifestyle {
-  cleanliness: number; // 1-5
-  social_energy: number; // 1-5
-  guests: number; // 1-5
-  noise_tolerance: number; // 1-5
-  sleep_schedule: 'early_bird' | 'night_owl' | 'flexible';
-  work_style: 'office' | 'hybrid' | 'remote' | 'varies';
-  diet: Diet;
-  smokes: boolean;
-  has_pets: boolean;
+  cleanliness?: number | null; // 1-5; unset means unanswered
+  social_energy?: number | null;
+  guests?: number | null;
+  noise_tolerance?: number | null;
+  sleep_schedule?: 'early_bird' | 'night_owl' | 'flexible' | null;
+  work_style?: 'office' | 'hybrid' | 'remote' | 'varies' | null;
+  diet?: Diet | null;
+  smokes?: boolean | null;
+  has_pets?: boolean | null;
 }
 
 export interface RoommatePreferences {

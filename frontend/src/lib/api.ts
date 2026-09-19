@@ -1,9 +1,11 @@
 import type { AuthResponse, LoginRequest, SignupRequest, UserProfile, MediaResponse } from '../types/auth';
-import type { DiscoveryFeedResponse, SwipeDirection, SwipeResponse } from '../types/discovery';
+import type { FeedResponse } from '../types/feed';
 import type { ConnectionRequestsResponse, MatchView } from '../types/connections';
+import type { ListingFeed } from '../types/feed';
 import { DEMO_PERSONAS } from './demoPersonas';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "https://childrens-after-janet-brass.trycloudflare.com/api" || '/api').replace(/\/$/, '');
+const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 const TOKEN_KEY = 'propvibe_token';
 const USER_KEY = 'propvibe_user';
 const EXPIRY_KEY = 'propvibe_expiry';
@@ -53,8 +55,16 @@ export function clearSession(): void {
   [TOKEN_KEY, USER_KEY, EXPIRY_KEY].forEach(key => localStorage.removeItem(key));
 }
 
-export function mediaUrl(url: string): string {
-  return new URL(url, new URL(API_BASE_URL, window.location.origin)).href;
+export function mediaUrl(url?: string | null): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  try {
+    return new URL(url, new URL(API_BASE_URL, window.location.origin)).href;
+  } catch {
+    return url;
+  }
 }
 
 async function request<T>(path: string, options: RequestInit = {}, timeout = 15000): Promise<T> {
@@ -142,45 +152,6 @@ export async function getMe(): Promise<UserProfile | null> {
   }
 }
 
-export async function updateProfile(payload: Pick<SignupRequest, 'profile' | 'offering'>): Promise<UserProfile> {
-  const token = getStoredToken();
-  if (token?.startsWith('offline_demo_')) {
-    const current = getStoredUser();
-    if (!current) throw new ApiError('Please sign in again to edit your profile.', 401);
-    const user: UserProfile = {
-      ...current,
-      profile: payload.profile,
-      offering: current.offering && payload.offering ? { ...current.offering, ...payload.offering } : null,
-    };
-    saveUser(user);
-    return user;
-  }
-  const user = await request<UserProfile>('/users/me', {
-    method: 'PUT', headers: { ...authorization(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-  });
-  saveUser(user);
-  return user;
-}
-
-export async function setAccountDeletionRequested(requested: boolean): Promise<UserProfile> {
-  const token = getStoredToken();
-  if (token?.startsWith('offline_demo_')) {
-    const current = getStoredUser();
-    if (!current) throw new ApiError('Please sign in again to manage your account.', 401);
-    const now = new Date();
-    const user: UserProfile = { ...current, deletion_request: requested ? current.deletion_request || {
-      requested_at: now.toISOString(), scheduled_for: new Date(now.getTime() + 7 * 86400000).toISOString(),
-    } : null };
-    saveUser(user);
-    return user;
-  }
-  const user = await request<UserProfile>('/users/me/deletion-request', {
-    method: requested ? 'POST' : 'DELETE', headers: authorization(),
-  });
-  saveUser(user);
-  return user;
-}
-
 export async function uploadMedia(target: 'profile' | 'property', kind: 'photos' | 'video', files: File[]): Promise<MediaResponse> {
   const body = new FormData();
   files.forEach(file => body.append(kind === 'photos' ? 'files' : 'file', file));
@@ -200,43 +171,66 @@ export async function fetchOnboardingQuestions(): Promise<import('../types/onboa
   }
 }
 
-export async function getDiscoveryFeed(limit = 20, offset = 0): Promise<DiscoveryFeedResponse | null> {
-  const token = getStoredToken();
-  if (!token || token.startsWith('offline_demo_')) return null;
-  const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
-    include_seen: 'false',
-    min_match_score: '0',
+export async function updateProfile(payload: {
+  profile?: UserProfile['profile'];
+  offering?: Partial<UserProfile['offering']> | null;
+}): Promise<UserProfile> {
+  return request('/users/me', {
+    method: 'PUT',
+    headers: { ...authorization(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
-  return request(`/list?${params.toString()}`, { headers: authorization() });
 }
 
-export async function postSwipe(targetId: string, direction: SwipeDirection, note?: string): Promise<SwipeResponse | null> {
+export async function setAccountDeletionRequested(requested: boolean): Promise<UserProfile> {
+  const path = '/users/me/deletion-request';
+  if (requested) {
+    return request(path, { method: 'POST', headers: authorization() });
+  }
+  return request(path, { method: 'DELETE', headers: authorization() });
+}
+
+export async function getDiscoveryFeed(limit = 20, offset = 0): Promise<FeedResponse | null> {
   const token = getStoredToken();
-  if (!token || token.startsWith('offline_demo_')) return null;
+  if (!token) return null;
   try {
-    const body: { target_id: string; direction: SwipeDirection; note?: string } = { target_id: targetId, direction };
-    if (note) body.note = note;
-    return await request<SwipeResponse>('/swipe', {
-      method: 'POST',
-      headers: { ...authorization(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch {
+    return await request<FeedResponse>(`/users/feed?limit=${limit}&offset=${offset}`, { headers: authorization() });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return null;
     return null;
   }
 }
 
-export async function getConnectionRequests(limit = 20, offset = 0): Promise<ConnectionRequestsResponse | null> {
-  const token = getStoredToken();
-  if (!token || token.startsWith('offline_demo_')) return null;
-  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  return request(`/connections/requests?${params.toString()}`, { headers: authorization() });
+export async function postSwipe(targetId: string, direction: 'like' | 'pass' | 'superlike', note?: string): Promise<{ matched: boolean; match_id: string | null; message: string }> {
+  return request('/swipe', {
+    method: 'POST',
+    headers: { ...authorization(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_id: targetId, direction, ...(note ? { note } : {}) }),
+  });
 }
 
-export async function getMatches(limit = 20, offset = 0): Promise<MatchView[] | null> {
-  const token = getStoredToken();
-  if (!token || token.startsWith('offline_demo_')) return null;
-  return request(`/matches?limit=${limit}&offset=${offset}`, { headers: authorization() });
+export async function fetchFeed(limit = 20, offset = 0, includeSeen = false, minMatchScore = 0): Promise<FeedResponse> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset), include_seen: String(includeSeen), min_match_score: String(minMatchScore) });
+  return request<FeedResponse>(`/users/feed?${params.toString()}`, { headers: authorization() });
+}
+
+export async function swipeCandidate(targetId: string, direction: 'like' | 'pass' | 'superlike'): Promise<{ matched: boolean; match_id: string | null; message: string }> {
+  return postSwipe(targetId, direction);
+}
+
+export async function getConnectionRequests(limit = 20, offset = 0): Promise<ConnectionRequestsResponse> {
+  return request<ConnectionRequestsResponse>(`/connections/requests?limit=${limit}&offset=${offset}`, { headers: authorization() });
+}
+
+export async function getMatches(limit = 20, offset = 0): Promise<MatchView[]> {
+  return request<MatchView[]>(`/matches?limit=${limit}&offset=${offset}`, { headers: authorization() });
+}
+
+export async function fetchListings(params: { limit?: number; offset?: number; min_match_score?: number } = {}): Promise<ListingFeed> {
+  const search = new URLSearchParams();
+  if (params.limit) search.set('limit', String(params.limit));
+  if (params.offset) search.set('offset', String(params.offset));
+  if (params.min_match_score !== undefined) search.set('min_match_score', String(params.min_match_score));
+  const query = search.toString();
+  return request<ListingFeed>(`/listings${query ? `?${query}` : ''}`, { headers: authorization() });
 }

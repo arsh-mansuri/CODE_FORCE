@@ -58,9 +58,9 @@ function lifestyleChips(lifestyle: Lifestyle | null): LifestyleChipData[] {
   if (!lifestyle) return [];
   const chips: LifestyleChipData[] = [];
   chips.push({ icon: 'cleaning_services', label: `Cleanliness: ${lifestyle.cleanliness}/5` });
-  const sleep = sleepLabel(lifestyle.sleep_schedule);
+  const sleep = sleepLabel(lifestyle.sleep_schedule ?? undefined);
   chips.push({ icon: sleep.icon, label: sleep.label });
-  chips.push({ icon: bedIconForWork(lifestyle.work_style), label: workLabel(lifestyle.work_style) });
+  chips.push({ icon: bedIconForWork(lifestyle.work_style ?? undefined), label: workLabel(lifestyle.work_style ?? undefined) });
   if (lifestyle.diet) chips.push({ icon: dietIcon(lifestyle.diet), label: titleCase(lifestyle.diet) });
   if (lifestyle.smokes) chips.push({ icon: 'no_smoking', label: 'Smoker' });
   if (lifestyle.has_pets) chips.push({ icon: 'pets', label: 'Has pets' });

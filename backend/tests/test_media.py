@@ -37,18 +37,19 @@ def upload_video(client, headers, data, target="profile", content_type="video/mp
     return client.post(f"/api/media/{target}/video", headers=headers, files={"file": ("walkthrough.mp4", data, content_type)})
 
 
-def test_signup_requires_three_profile_photos_before_discovery(client, register, upload_photos):
+def test_signup_can_browse_before_photos_but_connecting_requires_photos(client, register, upload_photos):
     ready, ready_headers, _ = register()
     draft, headers, _ = register(complete_media=False)
     progress = draft["user"]["onboarding"]
     assert progress["complete"] is False
     assert progress["profile_photos_needed"] == 3
-    assert client.get("/api/list", headers=headers).json()["error"]["code"] == "media_onboarding_incomplete"
+    assert client.get("/api/list", headers=headers).json()["items"][0]["id"] == ready["user"]["id"]
+    assert client.post("/api/swipe", headers=headers, json={"target_id": ready["user"]["id"], "direction": "like"}).json()["error"]["code"] == "media_onboarding_incomplete"
     assert client.get("/api/list", headers=ready_headers).json()["items"] == []
     swipe = client.post("/api/swipe", headers=ready_headers, json={"target_id": draft["user"]["id"], "direction": "like"})
     assert swipe.status_code == 409
     assert upload_photos(headers, indices=(0, 1)).json()["onboarding"]["profile_photos_needed"] == 1
-    assert client.get("/api/list", headers=headers).status_code == 409
+    assert client.get("/api/list", headers=headers).status_code == 200
     result = upload_photos(headers, indices=(2,)).json()
     assert result["gallery"]["ready"] is True
     assert result["onboarding"]["complete"] is True
@@ -188,7 +189,7 @@ def test_gallery_order_cover_captions_deletion_and_ownership(client, register):
     assert deleted.json()["onboarding"]["profile_photos_needed"] == 1
     assert client.get(photos[-1]["url"]).status_code == 404
     assert client.get(photos[-1]["thumbnail_url"]).status_code == 404
-    assert client.get("/api/list", headers=headers).status_code == 409
+    assert client.get("/api/list", headers=headers).status_code == 200
     assert client.get("/api/list", headers=outsider).json()["items"] == []
 
 

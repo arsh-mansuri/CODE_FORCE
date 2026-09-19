@@ -80,7 +80,7 @@ def questionnaire(settings: Settings) -> Questionnaire:
         ("has_pets", "Will any pets move in with you?", "boolean", "This helps check whether the household can accommodate them.", ()),
     ]
     sections.append(QuestionSection(id="lifestyle", title="How home feels for you", questions=[
-        q(f"profile.lifestyle.{field}", prompt, kind, help_text, required=True, applies_to=SHARE, choices=choices, used_for=["weighted_cosine", "irving_rankings"])
+        q(f"profile.lifestyle.{field}", prompt, kind, help_text, applies_to=SHARE, choices=choices, used_for=["weighted_cosine", "irving_rankings"])
         for field, prompt, kind, help_text, choices in lifestyle
     ]))
     sections.append(QuestionSection(id="preferences", title="What makes sharing comfortable?", questions=[
@@ -105,7 +105,7 @@ def questionnaire(settings: Settings) -> Questionnaire:
         ("available_spaces", "How many people can move into the shared home?", "number", "1–20 incoming people; whole homes use 1 tenancy.", False, ()),
         ("furnishing", "How furnished is the space?", "single_choice", "Defaults to unfurnished.", False, ("unfurnished", "semi_furnished", "furnished")),
         ("amenities", "What does the home offer?", "list", "Optional short amenity labels such as balcony or private bathroom.", False, ()),
-        ("nearby_landmarks", "Which useful places are nearby?", "list", "Optional kind, name, and distance_km for each landmark; displayed as provider-declared distances.", False, ()),
+        ("nearby_landmarks", "Which useful places are nearby?", "list", "Optional kind, name, and distance_km for each landmark; displayed as provider-declared distances.", False, tuple(v.value for v in LandmarkKind)),
         ("is_active", "Is the space currently available for discovery?", "boolean", "Defaults to true. Set false to pause discovery and new connections.", False, ()),
     ]
     sections.append(QuestionSection(id="offering", title="The home or space you're offering", questions=[
@@ -183,7 +183,16 @@ def questionnaire(settings: Settings) -> Questionnaire:
             max_duration_seconds=settings.max_video_seconds, used_for=["property_carousel"],
         ),
     ]))
+    for section in sections:
+        for question in section.questions:
+            question.used_for = ["preference_ranking" if value in ("hard_filter", "mutual_dealbreaker") else value for value in question.used_for]
+            if question.field == "profile.search.ac_required":
+                question.help_text = "Prioritize confirmed AC access. Other homes may still appear with the difference explained."
+            elif question.field in ("profile.roommate_preferences.smoking_ok", "profile.roommate_preferences.pets_ok"):
+                question.help_text = "Choose your preference, or leave unset. This affects suggestion order rather than excluding people."
+            elif question.field == "profile.search.location.nearby":
+                question.help_text = "Optional place type, name and distance. High-priority places carry more weight; differences are explained rather than excluded. Distances are provider-declared."
     return Questionnaire(
-        introduction="There is no right way to live. Tell us what works for you so we can find compatible homes and people. Optional answers can be skipped; explicit requirements are checked before ranking.",
+        introduction="Start with the essentials and complete your profile whenever you like. Preferences prioritize suggestions rather than exclude potential matches.",
         sections=sections,
     )

@@ -3,7 +3,8 @@ import type { AuthResponse } from '../../types/auth';
 import type { Questionnaire } from '../../types/onboarding';
 import { ApiError, signup, checkEmail, fetchOnboardingQuestions } from '../../lib/api';
 import { getDefaultAnswers, buildSignupPayload } from '../../lib/onboardingMapper';
-import { questionVisible, validateAnswer } from '../../lib/onboardingValidation';
+import { validateAnswer } from '../../lib/onboardingValidation';
+import { signupSteps } from '../../lib/signupQuestions';
 import { DynamicQuestionField } from './DynamicQuestionField';
 import { StepHeader } from './StepHeader';
 import { INTENT_LABELS, selectedIntents } from '../../lib/intents';
@@ -35,9 +36,7 @@ export function SignupFlow({ initialEmail = '', onSuccess, onSwitchToLogin }: Si
     return () => { active = false; };
   }, []);
 
-  const steps = questionnaire?.sections.flatMap(section => section.questions
-    .filter(question => questionVisible(question, answers))
-    .map(question => ({ question, section: section.title }))) || [];
+  const steps = questionnaire ? signupSteps(questionnaire, answers) : [];
   const active = steps[index];
 
   function change(field: string, value: any) {
@@ -102,15 +101,16 @@ export function SignupFlow({ initialEmail = '', onSuccess, onSwitchToLogin }: Si
 
   if (!questionnaire || !active) return <div className="flow-page"><p role="status">Getting your next chapter ready…</p></div>;
 
-  const number = review ? steps.length + 1 : index + 1;
+  const number = review ? steps.length : index + 1;
   return <form className="flow-page" onSubmit={submit}>
     <div className="flow-progress">
-      <div><span>{review ? 'A little preview' : active.section}</span><span>{number} / {steps.length + 1}</span></div>
-      <progress value={number} max={steps.length + 1} aria-label="Profile setup progress" />
+      <div><span>{review ? 'Ready to go' : active.section}</span><span>{number} / {steps.length}</span></div>
+      <progress value={number} max={steps.length} aria-label="Profile setup progress" />
+      <p className="input-hint">Just the essentials. Add your lifestyle and preferences later in Complete profile.</p>
     </div>
     <div className="flow-content" key={review ? 'review' : active.question.field}>
       <StepHeader title={review ? 'This is so you.' : active.question.prompt}
-        description={review ? 'A quick look before we add your photos and an optional video.' : active.question.help_text}
+        description={review ? 'A quick look before you start exploring. You can add more later.' : active.question.help_text}
         icon={review ? 'auto_awesome' : active.question.field === 'email' ? 'mail' : active.question.field === 'password' ? 'lock' : 'person_outline'} />
       {review ? <div className="profile-preview">
         <div className="preview-monogram">{String(answers['profile.full_name']).charAt(0).toUpperCase()}</div>
@@ -118,8 +118,9 @@ export function SignupFlow({ initialEmail = '', onSuccess, onSwitchToLogin }: Si
         <p>{answers['profile.occupation']}</p>
         <div className="preview-goals">{selectedIntents(answers).map(intent => <span key={intent} className="preview-intent">{INTENT_LABELS[intent]}</span>)}</div>
         {answers['profile.bio'] && <blockquote>“{answers['profile.bio']}”</blockquote>}
-        <p>{answers['profile.intent'].startsWith('offer_') ? answers['offering.title'] : `${answers['profile.search.location.city']} · ₹${answers['profile.search.budget'].minimum}–${answers['profile.search.budget'].maximum}/month`}</p>
-        <p className="muted">Next: 3–6 photos of you{answers['profile.intent'].startsWith('offer_') ? ' and your home' : ''}. Make your profile feel like you.</p>
+        <p>{answers['profile.intent'].startsWith('offer_') ? `${answers['offering.location'].city} · ₹${answers['offering.monthly_rent']}/month` : `${answers['profile.search.location.city']} · ₹${answers['profile.search.budget'].minimum}–${answers['profile.search.budget'].maximum}/month`}</p>
+        <p className="muted">You can review all details and starting preferences in Complete profile.</p>
+        <p className="muted">Start browsing now. Add photos of you{answers['profile.intent'].startsWith('offer_') ? ' and your home' : ''} before connecting.</p>
       </div> : <DynamicQuestionField question={active.question} value={answers[active.question.field]} onChange={value => change(active.question.field, value)} allAnswers={answers} disabled={loading} />}
       {error && <p className="flow-error" role="alert">{error}</p>}
     </div>

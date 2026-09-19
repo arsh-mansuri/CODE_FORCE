@@ -84,7 +84,7 @@ def apply_onboarding(user: User, body: OnboardingSubmission):
         user.listing.is_active = body.offering.is_active
 
 
-def validate_future_dates(body: OnboardingSubmission):
+def validate_future_dates(body: OnboardingSubmission, existing: User | None = None):
     # Validate writes only: saved profiles must remain readable after their dates pass.
     fields = {}
     if body.profile.search:
@@ -92,8 +92,15 @@ def validate_future_dates(body: OnboardingSubmission):
         fields["profile.search.move_in_by"] = body.profile.search.move_in_by
     if body.offering:
         fields["offering.available_from"] = body.offering.available_from
+    saved = {}
+    if existing:
+        search = profile_of(existing).search
+        if search:
+            saved.update({"profile.search.move_in_from": search.move_in_from, "profile.search.move_in_by": search.move_in_by})
+        if existing.listing:
+            saved["offering.available_from"] = ListingInput.model_validate(existing.listing.data).available_from
     for field, value in fields.items():
-        if value < date.today():
+        if value < date.today() and saved.get(field) != value:
             error = problem(422, "validation_error", "Choose today or a future date.")
             error.detail["fields"] = [{"field": field, "message": "Past dates are not allowed."}]
             raise error
@@ -213,7 +220,7 @@ def update_me(body: OnboardingSubmission, request: Request, user: Account, db: D
     Supports changing intent atomically. A newly incompatible connection is deactivated
     and its swipes removed; changing back requires fresh mutual likes.
     """
-    validate_future_dates(body)
+    validate_future_dates(body, user)
     retired_media = list(user.listing.media_assets) if user.listing and body.offering is None else []
     apply_onboarding(user, body)
     remove_incompatible_connections(db, user)
@@ -247,16 +254,18 @@ def cancel_account_deletion(user: Account, db: DB):
 @router.get("/list", tags=["Discovery"], response_model=FeedResponse, summary="Get photo-first swipe cards with names, locations, and match scores")
 @router.get("/users/feed", tags=["Discovery"], response_model=FeedResponse, summary="Discover compatible people or housing providers")
 def feed(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0, include_seen: bool = False, min_match_score: Annotated[float, Query(ge=0, le=100)] = 0):
-    """Uses the authenticated profile. First filters complementary intent, geography,
-    budget, layout, dates, required AC access, and bilateral household requirements, then ranks by weighted
-    lifestyle cosine (shared living) or housing fit (whole homes). Previously swiped
-    profiles are hidden unless include_seen=true. Both accounts must finish photo
-    onboarding. match_score is computed from requirements/lifestyle, never appearance.
+    """Uses the authenticated profile. Filters complementary intent and city, then ranks
+    budget, layout, dates, AC, nearby places and household preferences as priorities.
+    Lower-fit alternatives remain available after stronger suggestions, with differences
+    explained. Previously swiped
+    profiles are hidden unless include_seen=true. Candidates must finish photo
+    onboarding; the viewer can browse immediately. match_score is computed from
+    preferences/lifestyle, never appearance. passed_count counts distinct passed accounts.
     Cards contain a primary gallery, person gallery, display location, badges,
     and has_more/next_offset pagination. /list and /users/feed have identical contracts.
     """
-    require_discovery_ready(user)
     seen = set() if include_seen else set(db.scalars(select(Swipe.target_id).where(Swipe.swiper_id == user.id)))
+    passed_count = len(list(db.scalars(select(Swipe.target_id).where(Swipe.swiper_id == user.id, Swipe.direction == "pass"))))
     items = []
     for other in all_users(db):
         if other.id in seen or not onboarding_status(other).complete:
@@ -266,16 +275,16 @@ def feed(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0, include_s
             items.append(candidate_view(other, score))
     items.sort(key=lambda candidate: (-candidate.compatibility.score, candidate.id))
     has_more = offset + limit < len(items)
-    return FeedResponse(items=items[offset:offset + limit], total=len(items), limit=limit, offset=offset, has_more=has_more, next_offset=offset + limit if has_more else None)
+    return FeedResponse(items=items[offset:offset + limit], total=len(items), limit=limit, offset=offset, has_more=has_more, next_offset=offset + limit if has_more else None, passed_count=passed_count)
 
 
 @router.get("/listings", tags=["Listings"], response_model=ListingFeed, summary="Find homes matching your signup requirements")
 def listings(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0, min_match_score: Annotated[float, Query(ge=0, le=100)] = 0):
     """For seek_entire_home and seek_room accounts. Only active, eligible listings are
-    returned. Areas and PIN codes are OR alternatives within the selected city;
-    required nearby landmarks must have a provider-declared distance within the limit.
+    returned. Areas and PIN codes are preferred alternatives within the selected city;
+    nearby landmarks influence ranking using provider-declared distances.
     Electricity split/rate and AC charging details are included in each listing.
-    Seekers can require confirmed AC access via profile.search.ac_required.
+    Seekers can prioritize confirmed AC access via profile.search.ac_required.
     """
     require_discovery_ready(user)
     items = []
@@ -307,7 +316,7 @@ def update_listing(body: ListingInput, user: Account, db: DB):
     if profile.intent != listing_intent:
         profile = profile.model_copy(update={"intent": listing_intent})
     submission = OnboardingSubmission(profile=profile, offering=body)
-    validate_future_dates(submission)
+    validate_future_dates(submission, user)
     apply_onboarding(user, submission)
     remove_incompatible_connections(db, user)
     db.commit()

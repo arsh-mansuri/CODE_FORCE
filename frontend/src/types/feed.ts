@@ -77,7 +77,7 @@ export interface OfferingView {
   owner_id: string;
   title: string;
   description: string;
-  kind: 'entire_home' | 'shared_home';
+  kind: 'entire_home' | 'private_room' | 'shared_room';
   property_type: PropertyType;
   provider_relationship: string;
   location: {
@@ -92,7 +92,7 @@ export interface OfferingView {
   available_from: string;
   minimum_stay_months: number;
   available_spaces: number;
-  furnishing: 'unfurnished' | 'semi_furnished' | 'fully_furnished';
+  furnishing: 'unfurnished' | 'semi_furnished' | 'furnished';
   amenities: string[];
   nearby_landmarks: NearbyLandmark[];
   is_active: boolean;
@@ -122,6 +122,7 @@ export interface Candidate {
 }
 
 export interface FeedResponse {
+  passed_count: number;
   items: Candidate[];
   total: number;
   limit: number;
@@ -146,4 +147,20 @@ export interface FeedQueryParams {
   offset?: number;
   include_seen?: boolean;
   min_match_score?: number;
+}
+
+export interface ListingFeedItem {
+  listing: OfferingView;
+  compatibility: Compatibility;
+  match_score: number;
+  provider_name: string;
+}
+
+export interface ListingFeed {
+  items: ListingFeedItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+  next_offset: number | null;
 }

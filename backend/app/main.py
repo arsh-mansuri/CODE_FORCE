@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException
 from .config import Settings
 from .database import Base, make_engine, session_factory
 from .media_routes import router as media_router
-from .routes import router
+from .routes import router, feed, swipe, listings
 from .upload_limits import UploadLimitMiddleware
 
 
@@ -19,9 +19,10 @@ DESCRIPTION = """
 ## Intent-first housing and roommate discovery
 
 1. **GET /api/onboarding/questions** for conditional, nonjudgmental signup prompts.
-2. **POST /api/auth/signup** using a complete example for your intent.
+2. **POST /api/auth/signup** using the essentials for your intent. Lifestyle answers
+   are optional and can be completed gradually via **PUT /api/users/me**.
 3. Copy `access_token`, click **Authorize**, and paste the token (no `Bearer` prefix).
-4. Upload **3–6 profile photos** via `/api/media/profile/photos`; providers also
+4. Browse **GET /api/list** immediately. Before connecting, upload **3–6 profile photos** via `/api/media/profile/photos`; providers also
    upload **3–6 property photos** via `/api/media/property/photos`. Each gallery
    supports one optional 60-second video. Check `user.onboarding.complete`.
 5. **GET /api/list** for photo-first swipe cards with names, locations, and
@@ -31,11 +32,12 @@ DESCRIPTION = """
 search together; offer a whole home; offer a room/shared space as owner or tenant.
 
 All money is **INR**. Dates use **YYYY-MM-DD** and timestamps are **UTC**.
-Roommate gender/household requirements are mutual filters. Nearby derasar, mosque,
+Roommate gender/household preferences affect ranking rather than eligibility. Nearby derasar, mosque,
 temple, transit, and other landmark preferences describe location convenience only.
 Listings disclose electricity tariffs/split policies and AC availability, including
 separate AC rates where applicable. Unknown billing details remain null. Seekers
-can require AC access through `profile.search.ac_required`.
+can prioritize AC access through `profile.search.ac_required`. Alternative suggestions
+include explanations of differences; compatible goals and the same city remain required.
 
 **Math:** weighted cosine ranks eligible shared-living profiles; Irving can return
 no stable perfect matching; Rent Harmony is a bounded 2–3 room discrete simplex
@@ -118,4 +120,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(router)
     app.include_router(media_router)
+    app.add_api_route("/list", feed, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/users/feed", feed, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/swipe", swipe, methods=["POST"], include_in_schema=False)
+    app.add_api_route("/listings", listings, methods=["GET"], include_in_schema=False)
     return app

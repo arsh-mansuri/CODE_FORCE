@@ -103,7 +103,7 @@ class HousingSearch(Schema):
     move_in_from: date = Field(description="Earliest acceptable move-in date (YYYY-MM-DD).")
     move_in_by: date = Field(description="Latest acceptable move-in date, inclusive.")
     stay_months: int = Field(ge=1, le=60, description="Planned duration, used against a listing's minimum lease.")
-    ac_required: bool = Field(default=False, description="Require an installed AC accessible to the incoming tenant. Listings with unknown or absent AC are excluded when true.")
+    ac_required: bool = Field(default=False, description="Prioritize an installed AC accessible to the incoming tenant. Unknown or absent AC lowers ranking rather than excluding the listing.")
 
     @model_validator(mode="after")
     def dates_in_order(self):
@@ -113,21 +113,21 @@ class HousingSearch(Schema):
 
 
 class Lifestyle(Schema):
-    cleanliness: Scale = Field(description="1: relaxed about clutter; 5: prefer frequent tidying. Neither end is better.")
-    social_energy: Scale = Field(description="1: mostly private time; 5: frequent shared activities.")
-    guests: Scale = Field(description="1: rarely host; 5: host frequently.")
-    noise_tolerance: Scale = Field(description="1: prefer quiet; 5: comfortable with a lively home.")
-    sleep_schedule: Literal["early_bird", "night_owl", "flexible"]
-    work_style: Literal["office", "hybrid", "remote", "varies"]
-    diet: Diet
-    smokes: bool = Field(description="Do you currently smoke? Used only for explicit household preferences.")
-    has_pets: bool
+    cleanliness: Scale | None = None
+    social_energy: Scale | None = None
+    guests: Scale | None = None
+    noise_tolerance: Scale | None = None
+    sleep_schedule: Literal["early_bird", "night_owl", "flexible"] | None = None
+    work_style: Literal["office", "hybrid", "remote", "varies"] | None = None
+    diet: Diet | None = None
+    smokes: bool | None = None
+    has_pets: bool | None = None
 
 
 class RoommatePreferences(Schema):
-    genders: list[Gender] = Field(default_factory=list, max_length=5, description="Empty means open to anyone. Undisclosed genders do not satisfy a specific gender requirement.")
-    smoking_ok: bool | None = Field(default=None, description="false: smoke-free household required; null/true: no smoker exclusion.")
-    pets_ok: bool | None = Field(default=None, description="false: cannot live with pets; null/true: no pet exclusion.")
+    genders: list[Gender] = Field(default_factory=list, max_length=5, description="Empty means open to anyone. Used to prioritize suggestions, not exclude people.")
+    smoking_ok: bool | None = Field(default=None, description="false prioritizes smoke-free households; null/true has no smoking preference penalty.")
+    pets_ok: bool | None = Field(default=None, description="false prioritizes pet-free households; null/true has no pet preference penalty.")
     diets: list[Diet] = Field(default_factory=list, max_length=6, description="Empty means any food routine. No belief or identity is inferred.")
 
 
@@ -184,8 +184,6 @@ class UserProfileInput(Schema):
             raise ValueError("A housing search is required when looking for a home, room, or roommate.")
         if self.intent in OFFERING and self.search is not None:
             raise ValueError("Offering profiles describe location and rent in offering, not search.")
-        if goals & SHARING and self.lifestyle is None:
-            raise ValueError("Lifestyle answers are required for shared-living discovery.")
         if self.gender != Gender.self_described and self.gender_description:
             raise ValueError("gender_description is only used with self_described gender.")
         if not goals & SHARING and self.roommate_preferences != RoommatePreferences():
@@ -516,6 +514,7 @@ class FeedResponse(Schema):
     offset: int
     has_more: bool
     next_offset: int | None
+    passed_count: int = 0
 
 
 class ListingFeedItem(Schema):

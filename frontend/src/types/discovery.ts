@@ -68,7 +68,7 @@ export interface ApiCandidate {
   occupation: string | null;
   bio: string;
   intent: string;
-  intents: string[];
+  intents?: string[];
   lifestyle: import('./auth').Lifestyle | null;
   offering: import('./auth').ListingView | null;
   compatibility: ApiCompatibility;

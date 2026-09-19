@@ -29,7 +29,7 @@ export function AuthShell({ currentUser, onAuthSuccess, onUserUpdate, onLogout, 
   if (resetToken) return <main className="auth-shell"><ResetPasswordForm token={resetToken} onDone={() => { signIn(); onResetDone?.(); }} /></main>;
 
   if (currentUser) return <main className="auth-shell">
-    {!currentUser.onboarding.complete || editingMedia ? <MediaOnboarding
+    {editingMedia ? <MediaOnboarding
       user={currentUser}
       onFinish={user => { onUserUpdate(user); setEditingMedia(false); }}
       onLogout={onLogout}

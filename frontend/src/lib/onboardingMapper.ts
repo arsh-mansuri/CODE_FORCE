@@ -38,15 +38,6 @@ export function getDefaultAnswers(): Record<string, any> {
     'profile.search.stay_months': 12,
 
     // Lifestyle fields
-    'profile.lifestyle.cleanliness': 4,
-    'profile.lifestyle.social_energy': 3,
-    'profile.lifestyle.guests': 2,
-    'profile.lifestyle.noise_tolerance': 2,
-    'profile.lifestyle.sleep_schedule': 'early_bird',
-    'profile.lifestyle.work_style': 'hybrid',
-    'profile.lifestyle.diet': 'vegetarian',
-    'profile.lifestyle.smokes': false,
-    'profile.lifestyle.has_pets': false,
 
     // Roommate preferences
     'profile.roommate_preferences.genders': [],
@@ -88,11 +79,11 @@ export function getDefaultAnswers(): Record<string, any> {
       pincode: '',
     },
     'offering.monthly_rent': 12000,
-    'offering.deposit': 12000,
+    'offering.deposit': 0,
     'offering.available_from': localDate(nextWeek),
-    'offering.minimum_stay_months': 6,
+    'offering.minimum_stay_months': 1,
     'offering.available_spaces': 1,
-    'offering.furnishing': 'semi_furnished',
+    'offering.furnishing': 'unfurnished',
     'offering.amenities': [],
     'offering.nearby_landmarks': [],
     'offering.is_active': true,
@@ -154,17 +145,9 @@ export function buildSignupPayload(answers: Record<string, any>): SignupRequest 
   // Lifestyle construction
   let lifestylePayload = null;
   if (isSharing) {
-    lifestylePayload = {
-      cleanliness: Number(answers['profile.lifestyle.cleanliness'] || 4),
-      social_energy: Number(answers['profile.lifestyle.social_energy'] || 3),
-      guests: Number(answers['profile.lifestyle.guests'] || 2),
-      noise_tolerance: Number(answers['profile.lifestyle.noise_tolerance'] || 2),
-      sleep_schedule: answers['profile.lifestyle.sleep_schedule'] || 'early_bird',
-      work_style: answers['profile.lifestyle.work_style'] || 'hybrid',
-      diet: answers['profile.lifestyle.diet'] || 'vegetarian',
-      smokes: Boolean(answers['profile.lifestyle.smokes']),
-      has_pets: Boolean(answers['profile.lifestyle.has_pets']),
-    };
+    lifestylePayload = Object.fromEntries(Object.entries(answers)
+      .filter(([key, value]) => key.startsWith('profile.lifestyle.') && value != null)
+      .map(([key, value]) => [key.slice('profile.lifestyle.'.length), value]));
   }
 
   // Roommate preferences
@@ -194,7 +177,7 @@ export function buildSignupPayload(answers: Record<string, any>): SignupRequest 
     const kind = intent === 'offer_entire_home' ? 'entire_home' : (answers['offering.kind'] || 'private_room');
 
     offeringPayload = {
-      title: answers['offering.title'] || 'Bright Flat in Navrangpura',
+      title: answers['offering.title'] || `${kind === 'entire_home' ? 'Home' : 'Room'} in ${loc.city}`,
       description: answers['offering.description'] || '',
       kind,
       property_type: answers['offering.property_type'] || '2bhk',
@@ -270,7 +253,7 @@ function buildSplit(answers: Record<string, any>, path: string) {
   };
 }
 
-function buildElectricity(answers: Record<string, any>) {
+export function buildElectricity(answers: Record<string, any>) {
   const path = 'offering.electricity';
   const method = answers[`${path}.billing_method`];
   if (!method) return null;
@@ -283,11 +266,11 @@ function buildElectricity(answers: Record<string, any>) {
   };
 }
 
-function buildAirConditioning(answers: Record<string, any>) {
+export function buildAirConditioning(answers: Record<string, any>) {
   const path = 'offering.air_conditioning';
   const available = answers[`${path}.available`];
   if (available == null) return null;
-  if (!available) return { available: false };
+  if (!available) return { available: false, ...(answers[`${path}.notes`] ? { notes: answers[`${path}.notes`] } : {}) };
   const method = answers[`${path}.billing_method`];
   const rate = ({ separate_per_kwh: 'rate_per_kwh', separate_per_hour: 'rate_per_hour', separate_fixed_monthly: 'fixed_monthly_amount' } as Record<string, string>)[method];
   return {

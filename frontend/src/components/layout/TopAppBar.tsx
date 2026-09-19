@@ -7,8 +7,8 @@ interface TopAppBarProps {
 }
 
 export const TopAppBar: React.FC<TopAppBarProps> = ({
-  city = 'Brooklyn, NY',
-  area = 'Bushwick',
+  city = 'Ahmedabad',
+  area = 'Navrangpura',
   onFilterClick,
 }) => {
   return (

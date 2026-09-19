@@ -36,5 +36,13 @@ export function validateAnswer(question: Question, answers: Record<string, any>)
   if (question.field.endsWith('.pincodes') && value.some((code: string) => !/^[1-9]\d{5}$/.test(code))) return 'Use six-digit Indian PIN codes, separated by commas.';
   if (question.field === 'offering.location' && (!value.city?.trim() || !value.area?.trim() || !/^[1-9]\d{5}$/.test(value.pincode))) return 'Add a city, neighbourhood, and valid six-digit PIN code.';
   if (question.field === 'profile.compatibility_weights' && !Object.values(value).some(v => Number(v) > 0)) return 'Choose at least one priority above zero.';
+  if (question.field === 'offering.title' && value.trim().length < 3) return 'Use at least three characters.';
+  if (question.field === 'profile.search.location.nearby' || question.field === 'offering.nearby_landmarks') {
+    const search = question.field.startsWith('profile.');
+    for (const place of value) {
+      const distance = place[search ? 'max_distance_km' : 'distance_km'];
+      if (!place.kind || (!search && !place.name?.trim()) || !Number.isFinite(distance) || distance < (search ? 0.1 : 0) || distance > (search ? 50 : 100)) return 'Add a place type, valid distance, and a name for each listing landmark.';
+    }
+  }
   return null;
 }

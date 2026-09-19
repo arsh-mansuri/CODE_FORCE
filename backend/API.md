@@ -19,6 +19,42 @@ interactive examples and `/redoc` provides a read-oriented version.
 - The authenticated account is derived from the bearer token, never a supplied
   `user_id`. Protected routes need `Authorization: Bearer <access_token>`.
 
+## Property reviews and visit photographs
+
+- **GET `/reviews/properties`** lists properties belonging to current or past mutual
+  matches, plus your own property if you are a provider. Each item includes the
+  listing, provider, match status, total reviews, and average rating. Reviews are
+  grouped by listing ID, not by the individual connection.
+- **GET `/listings/{listing_id}/reviews?sort=recent&limit=10&offset=0`** returns
+  the complete paginated history, including reviews predating your match.
+  Published properties can be read by any signed-in member before deciding to
+  connect. Owners and previously matched members can also read paused properties.
+  `sort=helpful` orders by helpful votes with newest-first ties. `highlights`
+  always contains the newest review and the most helpful distinct review (at most
+  two). Neither ordering prefers positive ratings. `can_review`, `own_review_id`,
+  and `eligibility_message` describe the current viewer's writing access.
+- **POST `/listings/{listing_id}/reviews`** uses multipart fields `rating` (1–5),
+  `experience` (`connected`, `visited`, or `lived_here`), `content` (10–3000 trimmed
+  characters), and optional repeated `files` (up to six photographs). An active
+  mutual match with the provider is required. Authors cannot review their own
+  property or post a second review of the same property. Visit/stay context is
+  self-reported; only the mutual match is established by the server.
+- Photos use the existing decoder, dimension and size checks: JPEG/PNG/WebP,
+  160 × 160 minimum, 20 megapixels maximum, and 10 MiB per file. Images are
+  re-encoded without EXIF and receive thumbnails. The review and entire photo
+  batch succeed or fail together. Invalid or duplicate photos leave no partial
+  review. Upload limits also apply to chunked requests.
+- **PUT `/reviews/{review_id}/helpful`** with `{ "helpful": true }` (or `false`)
+  adds/removes the viewer's vote idempotently. Authors cannot vote for themselves.
+- **DELETE `/reviews/{review_id}`** removes only the authenticated author's own
+  review and its photographs. The author can then publish a replacement.
+- Photo `url` and `thumbnail_url` are opaque public image URLs under
+  `/review-photos/`; only files with live database records are served.
+
+Reviews and photographs are server-persisted and visible across accounts/devices.
+There is no local-storage publishing fallback. Restart the backend after updating
+to create the additive review tables automatically; existing tables are preserved.
+
 ### Errors
 
 ```json

@@ -5,6 +5,7 @@ import type { ListingFeedItem } from '../../types/feed';
 import { ApiError, fetchListings, mediaUrl, requestPropertyTour } from '../../lib/api';
 import { MatchFitSummary } from '../MatchFitSummary';
 import { PropertyPublicationNotice } from '../PropertyPublicationNotice';
+import { PropertyReviews } from '../reviews/PropertyReviews';
 
 interface CuratedFlatsViewProps {
   currentUser: UserProfile | null;
@@ -967,6 +968,7 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser,
 
             {/* Compatibility Reasons */}
             <MatchFitSummary compatibility={selectedItem.compatibility} />
+            <PropertyReviews key={`${selectedItem.listing.id}-${tourRequests[selectedItem.listing.owner_id] || 'initial'}`} listingId={selectedItem.listing.id} preview />
             {!selectedItem.compatibility.match_type && selectedItem.compatibility?.reasons && selectedItem.compatibility.reasons.length > 0 && (
               <div
                 style={{

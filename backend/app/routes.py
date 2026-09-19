@@ -13,7 +13,7 @@ from .lease import analyze_lease
 from .matching import candidate_view, compatibility, listing_view, profile_of, user_view
 from .media_storage import remove_files
 from .media_views import listing_publication_status, onboarding_status, require_discovery_ready
-from .models import AccountDeletionRequest, AuthSession, Listing, Match, Message, PasswordReset, Profile, RentSession, Swipe, SwipeNote, User, new_id, utcnow
+from .models import AccountDeletionRequest, AuthSession, Listing, Match, Message, PasswordReset, Profile, PropertyReview, ReviewPhoto, RentSession, Swipe, SwipeNote, User, new_id, utcnow
 from .password_reset import require_reset_email, send_reset_email
 from .onboarding import questionnaire
 from .schemas import (
@@ -224,6 +224,9 @@ def update_me(body: OnboardingSubmission, request: Request, user: Account, db: D
     """
     validate_future_dates(body, user)
     retired_media = list(user.listing.media_assets) if user.listing and body.offering is None else []
+    if user.listing and body.offering is None:
+        retired_media.extend(db.scalars(select(ReviewPhoto).join(PropertyReview)
+            .where(PropertyReview.listing_id == user.listing.id)).all())
     apply_onboarding(user, body)
     remove_incompatible_connections(db, user)
     db.commit()

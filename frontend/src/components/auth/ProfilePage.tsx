@@ -10,6 +10,7 @@ import { BentoInfoGrid } from '../discovery/BentoInfoGrid';
 import { ProfileEditor } from './ProfileEditor';
 import { AccountDeletionPanel } from './AccountDeletionPanel';
 import { PropertyPublicationNotice } from '../PropertyPublicationNotice';
+import { PropertyReviews } from '../reviews/PropertyReviews';
 import './Profile.css';
 
 interface ProfilePageProps {
@@ -97,6 +98,7 @@ export function ProfilePage({ user, onUserUpdate, onEditMedia, onLogout }: Profi
           <p>Available {date(offering.available_from)} · {offering.minimum_stay_months} month minimum stay</p>
         </div>
         {offering.description && <HingePromptCard readOnly prompt={{ id: 'home', label: 'About the home', text: offering.description }} />}
+        <PropertyReviews listingId={offering.id} preview />
         {offering.amenities.length > 0 && <div className="profile-goals">{offering.amenities.map(amenity => <span key={amenity}>{words(amenity)}</span>)}</div>}
         <ProfilePhotos gallery={offering.media} name={offering.title} />
       </section>}

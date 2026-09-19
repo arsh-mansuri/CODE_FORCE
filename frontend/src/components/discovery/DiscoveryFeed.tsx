@@ -6,6 +6,7 @@ import { HingePromptCard } from './HingePromptCard';
 import { BentoInfoGrid } from './BentoInfoGrid';
 import { StickyActionBar } from './StickyActionBar';
 import { MatchFitSummary } from '../MatchFitSummary';
+import { PropertyReviews } from '../reviews/PropertyReviews';
 
 interface DiscoveryFeedProps {
   candidates: DiscoveryCandidate[];
@@ -99,6 +100,7 @@ export function DiscoveryFeed({ candidates, onSwipe, onSendNote }: DiscoveryFeed
         {candidate.matchDetails && <MatchFitSummary compatibility={candidate.matchDetails} compact />}
         {candidate.photos[0] && <EditorialPhotoCard photo={candidate.photos[0]} onLike={() => showToast('Liked photo!')} />}
         {candidate.prompts[0] && <HingePromptCard prompt={candidate.prompts[0]} onLike={() => showToast('Liked prompt!')} />}
+        {candidate.propertyId && <PropertyReviews listingId={candidate.propertyId} preview />}
         {candidate.photos[1] && <EditorialPhotoCard photo={candidate.photos[1]} onLike={() => showToast('Liked photo!')} />}
         {candidate.prompts[1] && <HingePromptCard prompt={candidate.prompts[1]} onLike={() => showToast('Liked prompt!')} />}
         {candidate.prompts[2] && <HingePromptCard prompt={candidate.prompts[2]} onLike={() => showToast('Liked prompt!')} />}

@@ -10,7 +10,9 @@ class UploadLimitMiddleware:
         self.maximum_bytes = maximum_bytes
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope["method"] != "POST" or not scope["path"].startswith("/api/media/"):
+        is_upload = scope.get("path", "").startswith("/api/media/") or (
+            scope.get("path", "").startswith("/api/listings/") and scope.get("path", "").endswith("/reviews"))
+        if scope["type"] != "http" or scope["method"] != "POST" or not is_upload:
             return await self.app(scope, receive, send)
         headers = dict(scope["headers"])
         try:

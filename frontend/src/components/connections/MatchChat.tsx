@@ -14,9 +14,10 @@ const messageError = (error: unknown) => error instanceof ApiError && error.stat
   ? 'Your session has expired. Please sign in again to continue chatting.'
   : error instanceof Error ? error.message : 'Unable to reach your conversation. Please try again.';
 
-export function MatchChat({ userId, match, onBack, draft, onDraftChange }: {
+export function MatchChat({ userId, match, onBack, draft, onDraftChange, onReviewProperty }: {
   userId: string; match: MatchConnection; onBack: () => void;
   draft: string; onDraftChange: (text: string) => void;
+  onReviewProperty: (propertyId: string) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +101,7 @@ export function MatchChat({ userId, match, onBack, draft, onDraftChange }: {
     }}>
       <div className="chat-beginning"><span className="material-symbols-outlined" aria-hidden="true">home</span><h2>A shared yes. Start here.</h2>
         <p>You both chose to connect. Talk spaces, routines, and what feels like home.</p></div>
+      {person.propertyId && <div className="chat-property-reviews"><p>Connected or visited the property?</p><button type="button" className="connection-secondary" onClick={() => onReviewProperty(person.propertyId!)}><span className="material-symbols-outlined" aria-hidden="true">rate_review</span>Property reviews & photos</button></div>}
       {loading && <p className="connections-caption" role="status">Opening your conversation…</p>}
       {!loading && !historyError && messages.length === 0 && <section className="chat-starters" aria-label="Conversation starters"><p>Skip the small talk. Try a little home talk.</p>
         {starters.map(starter => <button key={starter} disabled={sending || locked} onClick={() => { onDraftChange(starter); composer.current?.focus(); }}>{starter}<span aria-hidden="true">↗</span></button>)}

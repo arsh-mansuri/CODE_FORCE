@@ -137,6 +137,41 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class PropertyReview(Base):
+    __tablename__ = "property_reviews"
+    __table_args__ = (
+        UniqueConstraint("listing_id", "author_id"),
+        CheckConstraint("rating BETWEEN 1 AND 5"),
+        CheckConstraint("experience IN ('connected', 'visited', 'lived_here')"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    listing_id: Mapped[str] = mapped_column(ForeignKey("listings.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    rating: Mapped[int]
+    experience: Mapped[str] = mapped_column(String(12))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+    author: Mapped["User"] = relationship()
+    photos: Mapped[list["ReviewPhoto"]] = relationship(cascade="all, delete-orphan")
+
+
+class ReviewPhoto(Base):
+    __tablename__ = "review_photos"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    review_id: Mapped[str] = mapped_column(ForeignKey("property_reviews.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str] = mapped_column(String(64), unique=True)
+    thumbnail_filename: Mapped[str] = mapped_column(String(64), unique=True)
+    width: Mapped[int]
+    height: Mapped[int]
+    position: Mapped[int]
+
+
+class ReviewHelpful(Base):
+    __tablename__ = "review_helpful"
+    review_id: Mapped[str] = mapped_column(ForeignKey("property_reviews.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+
 class RentSession(Base):
     __tablename__ = "rent_sessions"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)

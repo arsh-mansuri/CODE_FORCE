@@ -3,6 +3,7 @@ import type { FeedResponse } from '../types/feed';
 import type { ChatMessage, ConnectionRequestsResponse, MatchView } from '../types/connections';
 import type { ListingFeed, OfferingView } from '../types/feed';
 import { DEMO_PERSONAS } from './demoPersonas';
+import type { CreatePropertyReview, PropertyReview, PropertyReviewFeed, ReviewedProperty, ReviewSort } from '../types/reviews';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || 'https://stadium-administered-boats-minister.trycloudflare.com').replace(/\/$/, '');
 const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
@@ -248,4 +249,31 @@ export async function fetchListings(params: { limit?: number; offset?: number; m
   if (params.min_match_score !== undefined) search.set('min_match_score', String(params.min_match_score));
   const query = search.toString();
   return request<ListingFeed>(`/listings${query ? `?${query}` : ''}`, { headers: authorization() });
+}
+
+export function getReviewedProperties(): Promise<ReviewedProperty[]> {
+  return request('/reviews/properties', { headers: authorization() });
+}
+
+export function getPropertyReviews(listingId: string, sort: ReviewSort = 'recent', offset = 0): Promise<PropertyReviewFeed> {
+  return request(`/listings/${encodeURIComponent(listingId)}/reviews?limit=10&offset=${offset}&sort=${sort}`, { headers: authorization() });
+}
+
+export function createPropertyReview(listingId: string, review: CreatePropertyReview): Promise<PropertyReview> {
+  const body = new FormData();
+  body.append('rating', String(review.rating));
+  body.append('experience', review.experience);
+  body.append('content', review.content.trim());
+  review.photos.forEach(photo => body.append('files', photo));
+  return request(`/listings/${encodeURIComponent(listingId)}/reviews`, { method: 'POST', headers: authorization(), body }, 120000);
+}
+
+export function deletePropertyReview(reviewId: string): Promise<{ message: string }> {
+  return request(`/reviews/${encodeURIComponent(reviewId)}`, { method: 'DELETE', headers: authorization() });
+}
+
+export function setReviewHelpful(reviewId: string, helpful: boolean): Promise<PropertyReview> {
+  return request(`/reviews/${encodeURIComponent(reviewId)}/helpful`, {
+    method: 'PUT', headers: { ...authorization(), 'Content-Type': 'application/json' }, body: JSON.stringify({ helpful }),
+  });
 }

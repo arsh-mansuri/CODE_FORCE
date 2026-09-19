@@ -8,10 +8,11 @@ import { ConnectionAvatar } from './ConnectionAvatar';
 import { MatchChat } from './MatchChat';
 import './Connections.css';
 
-export function MatchesPage({ user, selected, onSelect, onMatched, onDiscover }: {
+export function MatchesPage({ user, selected, onSelect, onMatched, onDiscover, onReviewProperty }: {
   user: UserProfile; selected: MatchConnection | null;
   onSelect: (match: MatchConnection | null) => void;
   onMatched: (match: MatchConnection) => void; onDiscover: () => void;
+  onReviewProperty: (propertyId: string) => void;
 }) {
   const [matches, setMatches] = useState<MatchView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +50,7 @@ export function MatchesPage({ user, selected, onSelect, onMatched, onDiscover }:
   }, [demo, pages, refresh]);
 
   if (selected && !demo) return <MatchChat key={selected.id} userId={user.id} match={selected}
+    onReviewProperty={onReviewProperty}
     draft={drafts[selected.id] || ''} onDraftChange={text => setDrafts(previous => ({ ...previous, [selected.id]: text }))}
     onBack={() => { onSelect(null); setRefresh(value => value + 1); }} />;
 

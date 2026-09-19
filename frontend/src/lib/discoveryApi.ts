@@ -165,6 +165,7 @@ function buildSubtitle(candidate: ApiCandidate): string {
 export function toDiscoveryCandidate(candidate: ApiCandidate): DiscoveryCandidate {
   return {
     id: candidate.id,
+    propertyId: candidate.offering?.id,
     name: candidate.full_name,
     avatarUrl: mediaUrl(candidate.profile_media.cover_photo_url || candidate.profile_media.photos[0]?.url),
     age: candidate.age,

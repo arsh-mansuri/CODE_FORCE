@@ -30,6 +30,7 @@ export interface BentoInfoData {
 
 export interface DiscoveryCandidate {
   id: string;
+  propertyId?: string;
   name: string;
   avatarUrl?: string;
   age: number;

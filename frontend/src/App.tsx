@@ -11,6 +11,7 @@ import { MatchCelebration } from './components/connections/MatchCelebration';
 import { ProfileEditor } from './components/auth/ProfileEditor';
 import { MediaOnboarding } from './components/auth/MediaOnboarding';
 import { CuratedFlatsView } from './components/explore/CuratedFlatsView';
+import { ReviewsPage } from './components/reviews/ReviewsPage';
 import { AuthShell } from './components/auth/AuthShell';
 import './App.css';
 
@@ -19,6 +20,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('discover');
   const [newMatch, setNewMatch] = useState<MatchConnection | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<MatchConnection | null>(null);
+  const [reviewPropertyId, setReviewPropertyId] = useState<string | null>(null);
   const [profileTask, setProfileTask] = useState<'details' | 'media' | null>(null);
   const [checkingSession, setCheckingSession] = useState(() => Boolean(getStoredToken()));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('reset-password') || '');
@@ -36,6 +38,7 @@ export function App() {
     setActiveTab('discover');
     setNewMatch(null);
     setSelectedMatch(null);
+    setReviewPropertyId(null);
     setProfileTask(auth.user.offering && !auth.user.offering.media.ready ? 'media' : null);
   };
 
@@ -45,6 +48,7 @@ export function App() {
     setActiveTab('discover');
     setNewMatch(null);
     setSelectedMatch(null);
+    setReviewPropertyId(null);
     setProfileTask(null);
   };
 
@@ -83,6 +87,7 @@ export function App() {
 
       {!profileTask && activeTab === 'matches' && <MatchesPage key={currentUser.id} user={currentUser}
         selected={selectedMatch} onSelect={setSelectedMatch} onMatched={setNewMatch}
+        onReviewProperty={propertyId => { setReviewPropertyId(propertyId); setActiveTab('reviews'); window.scrollTo(0, 0); }}
         onDiscover={() => setActiveTab('discover')} />}
 
       {/* Tab 2: Curated Explore Flats */}
@@ -92,96 +97,8 @@ export function App() {
       )}
 
       {/* Tab 3: Roommate Reviews & Trust Network */}
-      {!profileTask && activeTab === 'reviews' && (
-        <div style={{ padding: '20px 20px 80px', width: '100%' }}>
-          <header style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <span className="material-symbols-outlined" style={{ color: 'var(--color-secondary)', fontSize: '22px' }}>
-                verified_user
-              </span>
-              <h2 className="font-serif" style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>
-                Vibe Endorsements
-              </h2>
-            </div>
-            <p style={{ fontSize: '13px', color: 'var(--color-on-surface-variant)', margin: 0 }}>
-              Mutual trust vouching & roommate references verified via Double-Opt-In
-            </p>
-          </header>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {[
-              {
-                author: 'Priya Sharma (Previous Flatmate)',
-                target: 'Ananya Desai',
-                period: '2024–2025 in Navrangpura, Ahmedabad',
-                text: '“Ananya was the dream flatmate. Kept the balcony chai garden spotless, split Torrent Power bills on the 1st via UPI without reminders, and is exceptionally mindful during WFH calls.”',
-                badges: ['Cleanliness 10/10', 'Quiet Hours', 'UPI Prompt'],
-              },
-              {
-                author: 'Aarav Shah',
-                target: 'Ananya Desai',
-                period: '2023–2024 in Bodakdev',
-                text: '“Super respectful of private space, shared delicious home-cooked meals, and hosted calm Sunday morning acoustic sessions. Couldn’t recommend her more highly.”',
-                badges: ['Verified Leaseholder', 'Polite & Mindful'],
-              },
-            ].map((review, i) => (
-              <div
-                key={i}
-                style={{
-                  background: 'var(--color-surface-container-lowest)',
-                  borderRadius: 'var(--radius-xl)',
-                  padding: '16px',
-                  border: '1px solid var(--color-outline-variant)',
-                  boxShadow: '0 2px 6px rgba(32, 27, 23, 0.04)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <span className="material-symbols-outlined filled" style={{ fontSize: '18px', color: 'var(--color-secondary)' }}>
-                    verified
-                  </span>
-                  <div>
-                    <h4 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: 'var(--color-on-surface)' }}>
-                      {review.author}
-                    </h4>
-                    <span style={{ fontSize: '11px', color: 'var(--color-tertiary)' }}>
-                      for {review.target} • {review.period}
-                    </span>
-                  </div>
-                </div>
-                <blockquote
-                  className="font-serif"
-                  style={{
-                    fontSize: '14px',
-                    lineHeight: '20px',
-                    fontStyle: 'italic',
-                    color: 'var(--color-on-surface)',
-                    margin: '8px 0 10px',
-                  }}
-                >
-                  {review.text}
-                </blockquote>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {review.badges.map((b, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        fontSize: '10px',
-                        fontWeight: 600,
-                        padding: '2px 8px',
-                        borderRadius: 'var(--radius-full)',
-                        background: 'var(--color-secondary-container)',
-                        color: 'var(--color-on-secondary-container)',
-                      }}
-                    >
-                      {b}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {!profileTask && activeTab === 'reviews' && <ReviewsPage key={currentUser.id} user={currentUser} initialPropertyId={reviewPropertyId}
+        onDiscover={() => { setActiveTab('discover'); window.scrollTo(0, 0); }} />}
 
       {/* Tab 4: Profile / Auth */}
       {!profileTask && activeTab === 'profile' && (

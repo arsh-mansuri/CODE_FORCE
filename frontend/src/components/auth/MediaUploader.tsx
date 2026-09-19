@@ -89,7 +89,7 @@ export function MediaUploader({ target, kind, gallery, onUpdate, onBusyChange }:
     try {
       onUpdate(await uploadMedia(target, kind, pending.map(item => item.file)));
       setPending([]);
-      setStatus(isPhoto ? 'Photos uploaded and saved.' : 'Video uploaded and saved.');
+      setStatus(isPhoto ? target === 'property' ? 'Property photos checked and saved to your listing.' : 'Profile photos uploaded and saved.' : 'Video uploaded and saved.');
     } catch (err) { setError(err instanceof Error ? err.message : 'Upload failed. Your selection is still here; try again.'); }
     finally { setBusy(false); }
   }
@@ -138,7 +138,8 @@ export function MediaUploader({ target, kind, gallery, onUpdate, onBusyChange }:
         <button type="button" className="text-button" disabled={busy} onClick={() => deviceCamera.current?.click()}>Use device camera instead</button></>}
     </div>}
     <p className="input-hint">{isPhoto ? 'JPEG, PNG or WebP · Up to 10 MB each · Choose distinct photos.' : 'MP4 (H.264) or WebM · Up to 60 seconds, 50 MB and 1080p.'}</p>
+    {isPhoto && target === 'property' && <p className="input-hint">Show the rooms, kitchen, building and shared spaces without people. Local face detection checks property photos before saving. Portraits belong in your profile gallery.</p>}
     {error && <p className="flow-error" role="alert">{error}</p>}
-    <p role="status" className="media-status">{busy ? 'Saving your media. This may take a moment…' : status}</p>
+    <p role="status" className="media-status">{busy ? isPhoto && target === 'property' ? 'Checking property photos and saving your listing…' : 'Saving your media. This may take a moment…' : status}</p>
   </div>;
 }

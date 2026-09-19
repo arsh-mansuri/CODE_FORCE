@@ -12,7 +12,7 @@ from .examples import RENT_EXAMPLE, SIGNUP_EXAMPLES
 from .lease import analyze_lease
 from .matching import candidate_view, compatibility, listing_view, profile_of, user_view
 from .media_storage import remove_files
-from .media_views import onboarding_status, require_discovery_ready
+from .media_views import listing_publication_status, onboarding_status, require_discovery_ready
 from .models import AccountDeletionRequest, AuthSession, Listing, Match, Message, PasswordReset, Profile, RentSession, Swipe, SwipeNote, User, new_id, utcnow
 from .password_reset import require_reset_email, send_reset_email
 from .onboarding import questionnaire
@@ -129,7 +129,9 @@ def signup(request: Request, body: Annotated[SignupRequest, Body(openapi_example
     """Atomically create credentials, completed profile, optional offered home, and a
     bearer session. No account is stored if conditional answers fail. Photo
     onboarding follows signup using this token: 3–6 profile photos, plus 3–6
-    property photos for providers. Discovery stays locked until uploads complete.
+    property photos for providers. An offering record is created automatically
+    from the signup details and appears in Curated Flats once its property gallery
+    is ready. Browsing is immediate; connecting requires completed photo onboarding.
     Choose one of the five Swagger examples. Emails are case-insensitive and unique.
     Shared-living profiles require lifestyle answers; whole-home providers do not.
     Offerings can disclose electricity rates/split rules and AC availability/charges.
@@ -285,11 +287,17 @@ def listings(user: Account, db: DB, limit: Limit = 20, offset: Offset = 0, min_m
     nearby landmarks influence ranking using provider-declared distances.
     Electricity split/rate and AC charging details are included in each listing.
     Seekers can prioritize confirmed AC access via profile.search.ac_required.
+    Lower-fit homes remain available when no exact match exists, ranked by match_score
+    (0–100). compatibility.match_type labels exact/alternative suggestions;
+    matched_preferences and compromises explain what fits and what needs flexibility.
+    An explicit min_match_score is still respected, including for alternatives.
+    Provider signup creates the listing automatically; an active home with 3–6
+    property photos is published even before personal-profile photos are complete.
+    Seekers may browse before uploading their own photos.
     """
-    require_discovery_ready(user)
     items = []
     for other in all_users(db):
-        if other.listing and other.listing.is_active and onboarding_status(other).complete:
+        if listing_publication_status(other.listing) == "published":
             score = compatibility(user, other)
             if score is not None and score.score >= min_match_score:
                 items.append(ListingFeedItem(listing=listing_view(other.listing), compatibility=score, match_score=score.score, provider_name=profile_of(other).full_name))
@@ -329,9 +337,8 @@ def get_listing(listing_id: str, user: Account, db: DB):
     if listing is None:
         raise problem(404, "listing_not_found", "This listing is not available to your account.")
     if listing.owner_id != user.id:
-        require_discovery_ready(user)
         provider = db.get(User, listing.owner_id)
-        if not onboarding_status(provider).complete or compatibility(user, provider) is None:
+        if listing_publication_status(listing) != "published" or compatibility(user, provider) is None:
             raise problem(404, "listing_not_found", "This listing is not available to your account.")
     return listing_view(listing)
 

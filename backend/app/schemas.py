@@ -393,11 +393,15 @@ class MediaGallery(Schema):
     ready: bool = Field(description="At least 3 and at most 6 photos; the video is optional.")
 
 
+ListingPublicationStatus = Literal["needs_photos", "published", "paused"]
+
+
 class OnboardingStatus(Schema):
     complete: bool
     profile_photos_needed: int
     property_photos_needed: int
     next_steps: list[str]
+    listing_status: ListingPublicationStatus | None = Field(default=None, description="Providers automatically appear in Curated Flats once their active listing has 3–6 property photos. Personal-profile photos are only required for people discovery and connecting.")
 
 
 class MediaResponse(Schema):
@@ -475,6 +479,9 @@ class Compatibility(Schema):
     cosine_similarity: float | None = Field(default=None, ge=0, le=1)
     method: Literal["weighted_cosine", "housing_fit"]
     reasons: list[str]
+    match_type: Literal["exact", "alternative"] = Field(default="alternative", description="Exact means all evaluated preferences fit and the unrounded score is 100; otherwise an alternative to consider.")
+    matched_preferences: list[str] = Field(default_factory=list)
+    compromises: list[str] = Field(default_factory=list, description="Unmet preferences or unconfirmed fit, explained separately from the positives.")
 
 
 class CardLocation(Schema):

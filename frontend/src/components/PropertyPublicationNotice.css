@@ -1,0 +1,42 @@
+.property-publication {
+  margin: 16px 0;
+  overflow: hidden;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-container-lowest);
+  color: var(--color-on-surface);
+}
+
+.property-publication__cover {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+}
+
+.property-publication__content {
+  padding: 16px;
+}
+
+.property-publication__content h3 {
+  margin: 8px 0;
+  font-size: 18px;
+}
+
+.property-publication__content p {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.property-publication__content .property-publication__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.property-publication__content button {
+  margin-top: 8px;
+}

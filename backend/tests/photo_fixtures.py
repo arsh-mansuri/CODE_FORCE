@@ -1,0 +1,23 @@
+"""Small real-face fixture, offline and public domain.
+
+Source: NASA portrait of astronaut Eileen Collins, via scikit-image v0.24.0
+https://github.com/scikit-image/scikit-image/blob/v0.24.0/skimage/data/astronaut.png
+https://scikit-image.org/docs/0.24.x/api/skimage.data.html#skimage.data.astronaut
+Cropped to the face, resized to 96px, grayscale JPEG quality 35. This is used
+only to test detection of a face, never identity recognition.
+"""
+from base64 import b64decode
+from io import BytesIO
+
+from PIL import Image
+
+
+FACE_JPEG = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABcQERQRDhcUEhQaGBcbIjklIh8fIkYyNSk5UkhXVVFIUE5bZoNvW2F8Yk5QcptzfIeLkpSSWG2grJ+OqoOPko3/wAALCABgAGABAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oACAEBAAA/AKMkmCDyantjh9z8n0z0qZ5Ii2dvNV/tAEp4KjOQan8988uQPYVPHMHG3Ip7KjcNGppgiJ4jT9aZIZYx86njrnnFZ93KrDcoYkVT+1FjtG70wDVm5IRVZe4GasGA5yfypPNEOBwTnmrKMnlgstRSpG6kYpiIVAAYgirMRBHzEk+vpU28AYYDHqKAyxnKt15BpJrpZIwJMY6Vi3gIk2hgVPSmR27sd2VUD1PWnliRtYZxWlHKFUl+azGYyThs/wAXAroEtBJCB3xUBsZkfAGRR9hkYkrke1N+yzrwBUcsEyKSA2ariWVUwwPXI/rVSe5JyPWoHcOqnPsafs6AOFHcGpUZQ5AIxjtT3lymF5NMs4i93GP9quoiMhGEVfqTU22ZRkmN/wBKWOYBsPGUPr1FTHa2CBTX2Y6Cqbi3bI2E/Ray76xt2BYRSKfULWPJZ4VirhgOcYqqkg3BWzVkNz6DFNSTYeOvrWnpMe+Yt3A/nWvOJxGVtztb1rPu4bxJF8uSZwQMn3zzV6NZUdV3bxgZPvWhE37vn0qjdXDb9qfjVO8ubqzRXBB3cjNH2+5SJHnVWR/7vUVXmVTl1XAPWsB12yEdwaubFMSuelEtnLBIVYd62NGj2jJ7mt5FB4pWTPBOBUTxqmMZJNGcRmqQ4usjpnmrbRK64IBFV57NGXGMAVWnjVICoFc5dKBdMPepFI+yOp9eK66e2SUhmUZFQpbi3xtHyk1djYcUXFxGi5A5qIOzjJGDShSVNUZyUn4OMCrdvMsqdefSpH4TOayrp+ornrhWM5JU8mtrSdHZgs92ODyqev1roNtQXCBUBGRz0zxTQHwdpqNEAcPO3PYHoKmaNZBgHr3BxTZLaZFxExx7nNUZLaQMSzZPfmnRYjI5wasySkR56VnlWmlCqMljwKu22mASeZKirjt1JrQIqBr+2X/lqPyqGW9tpU2rJ82eOKnhI4NLcwRzxGORcqaigihQ+W6lSOhGeanMEXH79gMc5NZ91Em3CyFmPfPApNOslicvuaR26s39BU95tVdq1Bpyb7vd2QfrWsTTSa89a+uG6yEfQUJdT71/eN1rtIWKKoPQjINWwwYUBSDxUcm4/eyarSRl26VIkixKaqTyFm9SeAK0LWD7PDtPLHlj71PRXnGwDq1ORRvHJ613UCCW2UH0pFdoX2yH5T0araMp53UjlTzVWeRY161nvcZPr6Cn2SmW8jz65ra20YpDXm5NKnXNdho2qwTxJG7BJQMEN0P0rUljWROOQaoSW00ZzC5A9DzVWWW/jHOCPaods0vMrUoQLVa6v/sUsZxnPXBwRWxYaxHOgLtuX+93H1FamQwBUgg9CKSv/9k="
+
+
+def portrait_bytes(rotation=0, image_format="JPEG"):
+    with Image.open(BytesIO(b64decode(FACE_JPEG))) as source:
+        image = source.resize((180, 180)).rotate(rotation).convert("RGB")
+        output = BytesIO()
+        image.save(output, format=image_format)
+        return output.getvalue()

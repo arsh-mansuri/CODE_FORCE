@@ -210,11 +210,14 @@ export interface MediaGallery {
   ready: boolean;
 }
 
+export type ListingPublicationStatus = 'needs_photos' | 'published' | 'paused';
+
 export interface OnboardingStatus {
   complete: boolean;
   profile_photos_needed: number;
   property_photos_needed: number;
   next_steps: string[];
+  listing_status?: ListingPublicationStatus | null;
 }
 
 export interface MediaResponse {

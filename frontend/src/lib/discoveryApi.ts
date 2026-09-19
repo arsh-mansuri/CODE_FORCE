@@ -117,7 +117,7 @@ function buildPhotos(candidate: ApiCandidate): PhotoCardData[] {
 
 function buildPrompts(candidate: ApiCandidate): PromptCardData[] {
   const prompts: PromptCardData[] = [];
-  const reasons = candidate.compatibility?.reasons ?? [];
+  const reasons = candidate.compatibility?.matched_preferences ?? candidate.compatibility?.reasons ?? [];
   if (reasons[0]) prompts.push({ id: `${candidate.id}-reason-1`, label: 'WHY WE COULD CLICK...', text: reasons[0] });
   if (candidate.bio?.trim()) prompts.push({ id: `${candidate.id}-bio`, label: 'A LITTLE ABOUT ME...', text: candidate.bio.trim() });
   if (reasons[1]) prompts.push({ id: `${candidate.id}-reason-2`, label: 'WHAT I VALUE...', text: reasons[1] });
@@ -172,7 +172,8 @@ export function toDiscoveryCandidate(candidate: ApiCandidate): DiscoveryCandidat
     subtitle: buildSubtitle(candidate),
     locationCity: candidate.location.city,
     locationArea: candidate.location.areas[0] ?? candidate.location.city,
-    matchScore: Math.round(candidate.match_score),
+    matchScore: candidate.match_score,
+    matchDetails: candidate.compatibility,
     chips: buildChips(candidate),
     photos: buildPhotos(candidate),
     prompts: buildPrompts(candidate),

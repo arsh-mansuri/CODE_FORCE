@@ -44,7 +44,7 @@ def add_demo_gallery(db, user, target, settings, palette, created_files):
         data = demo_photo(target, name, position, palette)
         upload = UploadFile(filename="demo.jpg", file=BytesIO(data), size=len(data))
         try:
-            prepared = prepare_photo(upload, settings)
+            prepared = prepare_photo(upload, settings, target=target)
         finally:
             upload.file.close()
         created_files.append(prepared)

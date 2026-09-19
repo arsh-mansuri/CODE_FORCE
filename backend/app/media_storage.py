@@ -12,6 +12,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .config import Settings
 from .models import new_id
+from .photo_screening import validate_property_photo
 from .security import problem
 
 
@@ -60,7 +61,7 @@ def jpeg_bytes(image: Image.Image, maximum: tuple[int, int]) -> bytes:
     return output.getvalue()
 
 
-def prepare_photo(upload: UploadFile, settings: Settings) -> PreparedMedia:
+def prepare_photo(upload: UploadFile, settings: Settings, *, target: str = "profile") -> PreparedMedia:
     data = read_limited(upload, settings.max_photo_bytes)
     try:
         with warnings.catch_warnings():
@@ -76,6 +77,8 @@ def prepare_photo(upload: UploadFile, settings: Settings) -> PreparedMedia:
             with Image.open(BytesIO(data)) as source:
                 image = ImageOps.exif_transpose(source).convert("RGB")
                 image.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                if target == "property":
+                    validate_property_photo(image)
                 width, height = image.size
                 encoded = jpeg_bytes(image, (2048, 2048))
                 thumbnail = jpeg_bytes(image, (480, 480))

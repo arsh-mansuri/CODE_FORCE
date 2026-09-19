@@ -120,6 +120,7 @@ export function SignupFlow({ initialEmail = '', onSuccess, onSwitchToLogin }: Si
         {answers['profile.bio'] && <blockquote>“{answers['profile.bio']}”</blockquote>}
         <p>{answers['profile.intent'].startsWith('offer_') ? `${answers['offering.location'].city} · ₹${answers['offering.monthly_rent']}/month` : `${answers['profile.search.location.city']} · ₹${answers['profile.search.budget'].minimum}–${answers['profile.search.budget'].maximum}/month`}</p>
         <p className="muted">You can review all details and starting preferences in Complete profile.</p>
+        {answers['profile.intent'].startsWith('offer_') && <p className="muted">Your property entry is created automatically with these details. Next, add 3–6 property photos to publish it in Curated Flats. Keep portraits in your personal profile gallery.</p>}
         <p className="muted">Start browsing now. Add photos of you{answers['profile.intent'].startsWith('offer_') ? ' and your home' : ''} before connecting.</p>
       </div> : <DynamicQuestionField question={active.question} value={answers[active.question.field]} onChange={value => change(active.question.field, value)} allAnswers={answers} disabled={loading} />}
       {error && <p className="flow-error" role="alert">{error}</p>}

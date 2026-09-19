@@ -8,6 +8,7 @@ import { DISCOVERY_CANDIDATES } from '../../lib/discoveryData';
 import { DiscoveryFeed } from './DiscoveryFeed';
 import { historyFor, saveDiscoveryHistory, shouldRefine, type DiscoveryHistory } from '../../lib/discoveryHistory';
 import '../auth/Profile.css';
+import './DiscoveryScreen.css';
 
 export function DiscoveryScreen({ user, onCompleteProfile, onManagePhotos, onMatched }: {
   user: UserProfile; onCompleteProfile: () => void; onManagePhotos: () => void;
@@ -69,7 +70,38 @@ export function DiscoveryScreen({ user, onCompleteProfile, onManagePhotos, onMat
     {loading ? <p className="profile-page" role="status">Finding your next possibilities…</p>
       : error ? <div className="profile-page"><p role="alert">{error}</p><button className="secondary-button" onClick={reload}>Try again</button></div>
       : items.length ? <DiscoveryFeed candidates={items} onSwipe={swipe} onSendNote={(id, note) => swipe(id, 'like', note)} />
-      : <div className="profile-page"><h2>You’re all caught up</h2><p>We’ve included available alternatives in your city, even when some preferences differ. Check back for new people or update your search.</p>
-        <button type="button" className="primary-button" onClick={onCompleteProfile}>Edit / complete profile</button></div>}
+      : <section className="discovery-empty" aria-labelledby="discovery-empty-heading">
+        <div className="discovery-empty-card">
+          <div className="discovery-empty-art" aria-hidden="true">
+            <div className="discovery-empty-orbit" />
+            <div className="discovery-empty-home">
+              <span className="material-symbols-outlined">home</span>
+              <span className="discovery-empty-home-line" />
+              <span className="discovery-empty-home-line short" />
+            </div>
+            <span className="discovery-empty-spark material-symbols-outlined">auto_awesome</span>
+            <span className="discovery-empty-check material-symbols-outlined">check</span>
+          </div>
+          <p className="discovery-empty-eyebrow">A little pause. More possibilities.</p>
+          <h2 id="discovery-empty-heading">You’re all<br /><em>caught up.</em></h2>
+          <p className="discovery-empty-description">You’ve explored the available people in your city. Your next great housemate could be just around the corner.</p>
+          <div className="discovery-empty-note">
+            <span className="material-symbols-outlined" aria-hidden="true">tune</span>
+            <p>We’ve also included alternatives in your city with a few different preferences. Fine-tune your profile to help us find your fit.</p>
+          </div>
+          <div className="discovery-empty-actions">
+            <button type="button" className="primary-button" onClick={onCompleteProfile}>
+              <span className="material-symbols-outlined" aria-hidden="true">edit</span>
+              Update your profile
+              <span className="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+            </button>
+            <button type="button" className="text-button" onClick={reload}>
+              <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
+              Check for new people
+            </button>
+          </div>
+        </div>
+        <p className="discovery-empty-footer">Good connections are worth the wait.</p>
+      </section>}
   </>;
 }

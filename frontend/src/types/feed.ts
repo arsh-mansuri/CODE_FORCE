@@ -13,6 +13,9 @@ export interface Compatibility {
   cosine_similarity: number | null;
   method: 'weighted_cosine' | 'housing_fit';
   reasons: string[];
+  match_type?: 'exact' | 'alternative';
+  matched_preferences?: string[];
+  compromises?: string[];
 }
 
 export interface MediaAsset {

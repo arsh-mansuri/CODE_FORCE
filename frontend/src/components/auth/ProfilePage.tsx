@@ -9,6 +9,7 @@ import { HingePromptCard } from '../discovery/HingePromptCard';
 import { BentoInfoGrid } from '../discovery/BentoInfoGrid';
 import { ProfileEditor } from './ProfileEditor';
 import { AccountDeletionPanel } from './AccountDeletionPanel';
+import { PropertyPublicationNotice } from '../PropertyPublicationNotice';
 import './Profile.css';
 
 interface ProfilePageProps {
@@ -72,6 +73,7 @@ export function ProfilePage({ user, onUserUpdate, onEditMedia, onLogout }: Profi
       A look at your profile through someone else’s eyes.
     </p>
     {saved && <p className="profile-save-notice" role="status">Profile updated{getStoredToken()?.startsWith('offline_demo_') ? ' on this device' : ''}. Looking good!</p>}
+    {offering && <PropertyPublicationNotice offering={offering} status={user.onboarding.listing_status} onManagePhotos={onEditMedia} />}
     <div className="profile-public-view" aria-label="Your public profile preview">
       <ProfileHeaderCard candidate={{ name: profile.full_name, age: profile.age, verified: false,
         subtitle: [profile.occupation, offering?.location.city || search?.location.city].filter(Boolean).join(' · '), chips }} />

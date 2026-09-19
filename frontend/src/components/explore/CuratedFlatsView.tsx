@@ -1,14 +1,18 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import type { UserProfile } from '../../types/auth';
 import type { ListingFeedItem } from '../../types/feed';
-import { fetchListings, mediaUrl } from '../../lib/api';
+import { ApiError, fetchListings, mediaUrl, requestPropertyTour } from '../../lib/api';
+import { MatchFitSummary } from '../MatchFitSummary';
+import { PropertyPublicationNotice } from '../PropertyPublicationNotice';
 
 interface CuratedFlatsViewProps {
   currentUser: UserProfile | null;
+  onManagePhotos?: () => void;
+  onOpenMatches?: () => void;
 }
 
-export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser }) => {
+export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser, onManagePhotos, onOpenMatches }) => {
   const [listings, setListings] = useState<ListingFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +23,14 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
   const [selectedItem, setSelectedItem] = useState<ListingFeedItem | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [requestingOwnerId, setRequestingOwnerId] = useState<string | null>(null);
+  const [tourRequests, setTourRequests] = useState<Record<string, 'pending' | 'matched'>>({});
+  const [tourError, setTourError] = useState('');
+  const [needsPhotos, setNeedsPhotos] = useState(false);
+  const requestBusy = useRef(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   const city =
     currentUser?.profile?.search?.location?.city ||
@@ -152,16 +164,32 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
     return parts.join(' • ');
   };
 
-  const handleApplyClick = (item: ListingFeedItem) => {
-    confetti({
-      particleCount: 65,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#923326', '#2a6a48', '#aff1c6', '#ffdad4'],
-    });
-    setActionSuccess(`Interest submitted to ${item.provider_name}! We'll ping your chat.`);
-    setTimeout(() => setActionSuccess(null), 3500);
-    setSelectedItem(null);
+  const handleApplyClick = async (item: ListingFeedItem) => {
+    const ownerId = item.listing.owner_id;
+    if (requestBusy.current || tourRequests[ownerId]) return;
+    requestBusy.current = true;
+    setRequestingOwnerId(ownerId);
+    setTourError('');
+    setNeedsPhotos(false);
+    setActionSuccess(null);
+    try {
+      const result = await requestPropertyTour(item.listing);
+      setTourRequests(previous => ({ ...previous, [ownerId]: result.matched ? 'matched' : 'pending' }));
+      setActionSuccess(result.matched
+        ? `You're connected with ${item.provider_name}! Open Matches to arrange your tour.`
+        : `Tour request sent to ${item.provider_name}. They'll see it in their connection requests.`);
+      clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setActionSuccess(null), 6000);
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        void confetti({ particleCount: 65, spread: 70, origin: { y: 0.6 }, colors: ['#923326', '#2a6a48', '#aff1c6', '#ffdad4'] });
+      }
+    } catch (err) {
+      setTourError(err instanceof Error ? err.message : 'Unable to send your tour request. Please try again.');
+      setNeedsPhotos(err instanceof ApiError && err.code === 'media_onboarding_incomplete');
+    } finally {
+      requestBusy.current = false;
+      setRequestingOwnerId(null);
+    }
   };
 
   return (
@@ -169,6 +197,7 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
       {/* Toast */}
       {actionSuccess && (
         <div
+          role="status"
           style={{
             position: 'fixed',
             top: '72px',
@@ -229,9 +258,11 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
           </button>
         </div>
         <p style={{ fontSize: '13px', color: 'var(--color-on-surface-variant)', margin: '4px 0 0' }}>
-          Verified properties primed for Sperner Fair-Rent splitting in {city}
+          Community-listed homes in {city} · Explore fair-rent splitting
         </p>
       </header>
+
+      {currentUser?.offering && <PropertyPublicationNotice offering={currentUser.offering} status={currentUser.onboarding.listing_status} onManagePhotos={onManagePhotos} />}
 
       {/* Primary Filter & Matching Pills */}
       <div
@@ -504,6 +535,11 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
       )}
 
       {/* Listing Cards List */}
+      {!loading && !error && displayedListings.length > 0 && listings.every(item => item.compatibility.match_type === 'alternative') && (
+        <p role="status" className="match-fit-summary match-fit-summary--alternative">
+          No exact match for your saved preferences yet. Here are alternatives in {city}, ranked by match percentage. Each home shows the trade-offs to consider.
+        </p>
+      )}
       {!loading && !error && displayedListings.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           {displayedListings.map((item) => {
@@ -521,6 +557,8 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
                 onClick={() => {
                   setSelectedItem(item);
                   setActivePhotoIndex(0);
+                  setTourError('');
+                  setNeedsPhotos(false);
                 }}
                 style={{
                   background: 'var(--color-surface-container-lowest)',
@@ -573,7 +611,7 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
                     }}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: '14px', color: '#aff1c6' }}>
-                      verified
+                      {item.compatibility.match_type === 'alternative' ? 'tune' : 'check_circle'}
                     </span>
                     <span>{match_score}% Match</span>
                   </div>
@@ -640,6 +678,8 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
                   >
                     {formatSpecsLine(item)}
                   </p>
+
+                  <MatchFitSummary compatibility={item.compatibility} compact />
 
                   {/* Sperner Fair Split Pill matching screenshot */}
                   <div
@@ -762,7 +802,7 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
             animation: 'fadeIn 0.2s ease',
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedItem(null);
+            if (e.target === e.currentTarget && !requestBusy.current) setSelectedItem(null);
           }}
         >
           <div
@@ -794,6 +834,8 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
               <button
                 type="button"
                 onClick={() => setSelectedItem(null)}
+                disabled={requestingOwnerId !== null}
+                aria-label="Close property details"
                 style={{
                   border: 'none',
                   background: 'var(--color-surface-container)',
@@ -924,7 +966,8 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
             </div>
 
             {/* Compatibility Reasons */}
-            {selectedItem.compatibility?.reasons && selectedItem.compatibility.reasons.length > 0 && (
+            <MatchFitSummary compatibility={selectedItem.compatibility} />
+            {!selectedItem.compatibility.match_type && selectedItem.compatibility?.reasons && selectedItem.compatibility.reasons.length > 0 && (
               <div
                 style={{
                   background: 'var(--color-surface-container)',
@@ -1067,10 +1110,23 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
                 </div>
               </div>
 
+              <p style={{ fontSize: '12px', color: 'var(--color-on-surface-variant)' }}>
+                Requesting a tour sends this provider a connection request with a note about the property. You can arrange the visit in chat after they accept.
+              </p>
+              {tourError && <p className="flow-error" role="alert">{tourError}</p>}
+              {needsPhotos && onManagePhotos && <button type="button" className="secondary-button" onClick={onManagePhotos}>Complete your photos</button>}
+              {tourRequests[selectedItem.listing.owner_id] && <p role="status" style={{ fontSize: '13px', color: 'var(--color-secondary)' }}>
+                {tourRequests[selectedItem.listing.owner_id] === 'matched'
+                  ? 'You’re connected! Go to Matches to arrange your tour in chat.'
+                  : 'Tour request sent. Waiting for the provider to accept your connection request.'}
+              </p>}
+              {tourRequests[selectedItem.listing.owner_id] === 'matched' && onOpenMatches && <button type="button" className="secondary-button" onClick={onOpenMatches}>Open Matches</button>}
+
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={() => setSelectedItem(null)}
+                  disabled={requestingOwnerId !== null}
                   style={{
                     flex: 1,
                     padding: '12px',
@@ -1087,7 +1143,9 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleApplyClick(selectedItem)}
+                  onClick={() => void handleApplyClick(selectedItem)}
+                  disabled={requestingOwnerId !== null || Boolean(tourRequests[selectedItem.listing.owner_id])}
+                  aria-busy={requestingOwnerId === selectedItem.listing.owner_id}
                   style={{
                     flex: 2,
                     padding: '12px',
@@ -1097,11 +1155,15 @@ export const CuratedFlatsView: React.FC<CuratedFlatsViewProps> = ({ currentUser 
                     color: '#ffffff',
                     fontSize: '13px',
                     fontWeight: 700,
-                    cursor: 'pointer',
+                    cursor: requestingOwnerId !== null || tourRequests[selectedItem.listing.owner_id] ? 'default' : 'pointer',
+                    opacity: requestingOwnerId !== null || tourRequests[selectedItem.listing.owner_id] ? 0.7 : 1,
                     boxShadow: 'var(--shadow-sm)',
                   }}
                 >
-                  Apply / Request Tour
+                  {requestingOwnerId === selectedItem.listing.owner_id ? 'Sending request…'
+                    : tourRequests[selectedItem.listing.owner_id] === 'matched' ? 'Connected'
+                      : tourRequests[selectedItem.listing.owner_id] === 'pending' ? 'Tour request sent'
+                        : 'Apply / Request Tour'}
                 </button>
               </div>
             </div>

@@ -1,10 +1,10 @@
 import type { AuthResponse, LoginRequest, SignupRequest, UserProfile, MediaResponse } from '../types/auth';
 import type { FeedResponse } from '../types/feed';
 import type { ChatMessage, ConnectionRequestsResponse, MatchView } from '../types/connections';
-import type { ListingFeed } from '../types/feed';
+import type { ListingFeed, OfferingView } from '../types/feed';
 import { DEMO_PERSONAS } from './demoPersonas';
 
-const rawApiUrl = (import.meta?.env?.VITE_API_URL || "https://childrens-after-janet-brass.trycloudflare.com/api" || '/api').replace(/\/$/, '');
+const rawApiUrl = (import.meta.env.VITE_API_URL || 'https://childrens-after-janet-brass.trycloudflare.com/api').replace(/\/$/, '');
 const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 const TOKEN_KEY = 'propvibe_token';
 const USER_KEY = 'propvibe_user';
@@ -207,6 +207,10 @@ export async function postSwipe(targetId: string, direction: 'like' | 'pass' | '
     headers: { ...authorization(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ target_id: targetId, direction, ...(note ? { note } : {}) }),
   });
+}
+
+export function requestPropertyTour(listing: Pick<OfferingView, 'owner_id' | 'title'>) {
+  return postSwipe(listing.owner_id, 'like', `Hi! I'd like to arrange a tour of "${listing.title}". When would be a good time?`);
 }
 
 export async function fetchFeed(limit = 20, offset = 0, includeSeen = false, minMatchScore = 0): Promise<FeedResponse> {

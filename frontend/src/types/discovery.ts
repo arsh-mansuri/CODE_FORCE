@@ -38,6 +38,7 @@ export interface DiscoveryCandidate {
   locationCity: string;
   locationArea: string;
   matchScore: number;
+  matchDetails?: ApiCompatibility;
   chips: LifestyleChipData[];
   photos: PhotoCardData[];
   prompts: PromptCardData[];
@@ -46,12 +47,7 @@ export interface DiscoveryCandidate {
 
 export type SwipeDirection = 'like' | 'pass' | 'superlike';
 
-export interface ApiCompatibility {
-  score: number;
-  cosine_similarity: number | null;
-  method: 'weighted_cosine' | 'housing_fit';
-  reasons: string[];
-}
+export type ApiCompatibility = import('./feed').Compatibility;
 
 export interface ApiCardLocation {
   city: string;

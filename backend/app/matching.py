@@ -1,6 +1,7 @@
 """Intent/city eligibility and explainable preference-first suggestion ranking."""
+from dataclasses import dataclass
 from datetime import timezone
-from math import sqrt
+from math import isclose, sqrt
 
 from .models import User
 from .media_views import gallery_assets, gallery_view, onboarding_status
@@ -74,41 +75,62 @@ def household_differences(preferences: RoommatePreferences, candidate: UserProfi
     return differences
 
 
-def preference_score(checks: list[tuple[bool, int, str, str]]) -> tuple[float, list[str]]:
+@dataclass
+class PreferenceFit:
+    score: float
+    reasons: list[str]
+    matched_preferences: list[str]
+    compromises: list[str]
+
+
+def preference_score(checks: list[tuple[bool, int, str, str]]) -> PreferenceFit:
     total = sum(weight for _, weight, _, _ in checks)
     score = sum(weight for fits, weight, _, _ in checks if fits) / total if total else 1.0
-    return score, [yes if fits else no for fits, _, yes, no in checks]
+    return PreferenceFit(
+        score=score,
+        reasons=[yes if fits else no for fits, _, yes, no in checks],
+        matched_preferences=[yes for fits, _, yes, _ in checks if fits],
+        compromises=[no for fits, _, _, no in checks if not fits],
+    )
 
 
-def home_fits(seeker: UserProfileInput, provider: User) -> tuple[float | None, list[str]]:
+def home_fits(seeker: UserProfileInput, provider: User) -> PreferenceFit | None:
     if provider.listing is None or not provider.listing.is_active:
-        return None, []
+        return None
     home = ListingInput.model_validate(provider.listing.data)
     search = seeker.search
     if search is None or normal(search.location.city) != normal(home.location.city):
-        return None, []
+        return None
+    preferred_locality = ", ".join([*search.location.areas, *search.location.pincodes])
+    budget_difference = (
+        f"₹{home.monthly_rent - search.budget.maximum:g} above your maximum"
+        if home.monthly_rent > search.budget.maximum
+        else f"₹{search.budget.minimum - home.monthly_rent:g} below your minimum"
+    )
     checks = [
-        (locality_matches(search.location, home), 2, "Home is in your preferred area.", "Explore another neighbourhood in your city."),
-        (search.budget.minimum <= home.monthly_rent <= search.budget.maximum, 4, "Rent is in your preferred range.", f"Rent is outside your preferred range: ₹{home.monthly_rent:g}/month."),
-        (home.property_type in search.property_types, 1, "Home layout matches your preferences.", "Home layout differs from your preferences."),
-        (home.available_from <= search.move_in_by, 3, "Move-in timing fits.", f"Available later than your preferred move-in window: {home.available_from}."),
-        (home.minimum_stay_months <= search.stay_months, 1, "Minimum stay fits.", f"Longer minimum stay: {home.minimum_stay_months} months."),
+        (locality_matches(search.location, home), 2, "Home is in your preferred area.", f"You wanted {preferred_locality}; this home is in {home.location.area} ({home.location.pincode}), in the same city."),
+        (search.budget.minimum <= home.monthly_rent <= search.budget.maximum, 4, "Rent is in your preferred range.", f"Rent is outside your preferred range: you wanted ₹{search.budget.minimum:g}–₹{search.budget.maximum:g}/month; this home is ₹{home.monthly_rent:g}/month ({budget_difference})."),
+        (home.property_type in search.property_types, 1, "Home layout matches your preferences.", f"You wanted {', '.join(p.value.upper() for p in search.property_types)}; this home is {home.property_type.value.upper()}."),
+        (home.available_from <= search.move_in_by, 3, "Move-in timing fits.", f"You wanted to move in by {search.move_in_by}; this home is available from {home.available_from}, {(home.available_from - search.move_in_by).days} days later."),
+        (home.minimum_stay_months <= search.stay_months, 1, "Minimum stay fits.", f"You wanted a {search.stay_months}-month stay; this home requires at least {home.minimum_stay_months} months."),
     ]
     if search.ac_required:
         checks.append((home.air_conditioning is not None and home.air_conditioning.available, 2,
-                       "An installed AC is available to the incoming tenant.", "Preferred AC access is unavailable or unconfirmed."))
+                       "An installed AC is available to the incoming tenant.",
+                       "You wanted AC; preferred AC access is unavailable or unconfirmed. " +
+                       ("The provider has not confirmed AC availability." if home.air_conditioning is None else "This home has no AC accessible to you.")))
     for preference in search.location.nearby:
         place = preference.name or preference.kind.value.replace('_', ' ')
         checks.append((landmark_matches(preference, home), 2 if preference.importance == "required" else 1,
                        f"Within {preference.max_distance_km:g} km of {place} (provider-declared).",
-                       f"Preferred distance to {place} is not met or unconfirmed."))
+                        f"You wanted to be within {preference.max_distance_km:g} km of {place}; this distance is not met or unconfirmed in the provider's listing."))
     return preference_score(checks)
 
 
-def search_fit(a: UserProfileInput, b: UserProfileInput) -> tuple[float | None, list[str]]:
+def search_fit(a: UserProfileInput, b: UserProfileInput) -> PreferenceFit | None:
     x, y = a.search, b.search
     if x is None or y is None or normal(x.location.city) != normal(y.location.city):
-        return None, []
+        return None
     locality = True
     if (x.location.areas or x.location.pincodes) and (y.location.areas or y.location.pincodes):
         locality = bool({normal(v) for v in x.location.areas}.intersection(normal(v) for v in y.location.areas)
@@ -158,8 +180,8 @@ def weighted_cosine(a: Lifestyle | None, b: Lifestyle | None, weights) -> tuple[
         return None, ["Lifestyle fit is still unknown. Add preferences to personalize suggestions."]
     score = min(1.0, max(0.0, sum(x * y for x, y in zip(left, right)) / denominator))
     reasons = [
-        f"{'Similar' if overlap >= 0.8 else 'Different'} {key.replace('_', ' ')} preferences."
-        for overlap, _, key in sorted(factors, reverse=True)[:3]
+        f"{'Similar' if isclose(overlap, 1.0, abs_tol=1e-9) else 'Different'} {key.replace('_', ' ')} preferences."
+        for overlap, _, key in sorted(factors, reverse=True)
     ]
     return score, reasons
 
@@ -171,9 +193,10 @@ def compatibility(viewer: User, candidate: User) -> Compatibility | None:
     a_goals, b_goals = set(a.selected_intents), set(b.selected_intents)
     shared = False
     if Intent.seek_roommate in a_goals and Intent.seek_roommate in b_goals:
-        housing_score, reasons = search_fit(a, b)
-        if housing_score is None:
+        housing = search_fit(a, b)
+        if housing is None:
             return None
+        reasons = housing.reasons
         if a.search.ac_required or b.search.ac_required:
             reasons.append("AC access is a priority when you choose a property together.")
         if any(p.importance == "required" for s in (a.search, b.search) for p in s.location.nearby):
@@ -189,18 +212,28 @@ def compatibility(viewer: User, candidate: User) -> Compatibility | None:
         required_goal = Intent.seek_room if shared else Intent.seek_entire_home
         if required_goal not in seeker.selected_intents:
             return None
-        housing_score, reasons = home_fits(seeker, provider)
-        if housing_score is None:
+        housing = home_fits(seeker, provider)
+        if housing is None:
             return None
+        reasons = housing.reasons
     else:
         return None
+    matched_preferences = housing.matched_preferences
+    compromises = housing.compromises
     if shared:
         differences = list(dict.fromkeys(household_differences(a.roommate_preferences, b) + household_differences(b.roommate_preferences, a)))
         cosine, lifestyle_reasons = weighted_cosine(a.lifestyle, b.lifestyle, a.compatibility_weights)
-        score = max(0, 100 * (0.55 * housing_score + 0.45 * (cosine if cosine is not None else 0.5)) - 8 * len(differences))
-        return Compatibility(score=round(score, 2), cosine_similarity=round(cosine, 6) if cosine is not None else None, method="weighted_cosine", reasons=reasons + differences + lifestyle_reasons)
+        matched_preferences += [reason for reason in lifestyle_reasons if reason.startswith("Similar")]
+        compromises += differences + [reason for reason in lifestyle_reasons if not reason.startswith("Similar")]
+        score = max(0, 100 * (0.55 * housing.score + 0.45 * (cosine if cosine is not None else 0.5)) - 8 * len(differences))
+        return Compatibility(score=round(score, 2), cosine_similarity=round(cosine, 6) if cosine is not None else None,
+            method="weighted_cosine", reasons=reasons + differences + lifestyle_reasons,
+            match_type="exact" if isclose(score, 100, abs_tol=1e-9) and not compromises else "alternative",
+            matched_preferences=matched_preferences, compromises=compromises)
     # A landlord's personal lifestyle is not relevant to renting an empty home.
-    return Compatibility(score=round(100 * housing_score, 2), method="housing_fit", reasons=reasons)
+    return Compatibility(score=round(100 * housing.score, 2), method="housing_fit", reasons=reasons,
+        match_type="exact" if not compromises else "alternative",
+        matched_preferences=matched_preferences, compromises=compromises)
 
 
 def candidate_view(user: User, score: Compatibility) -> Candidate:

@@ -36,7 +36,7 @@ export function App() {
     setActiveTab('discover');
     setNewMatch(null);
     setSelectedMatch(null);
-    setProfileTask(null);
+    setProfileTask(auth.user.offering && !auth.user.offering.media.ready ? 'media' : null);
   };
 
   const handleLogout = () => {
@@ -64,7 +64,7 @@ export function App() {
       {profileTask === 'details' && <ProfileEditor user={currentUser} onCancel={() => setProfileTask(null)} onSave={updated => {
         setCurrentUser(updated); setProfileTask(null);
       }} />}
-      {profileTask === 'media' && <MediaOnboarding user={currentUser} editing onLogout={handleLogout} onFinish={updated => {
+      {profileTask === 'media' && <MediaOnboarding user={currentUser} editing onLogout={handleLogout} onUserUpdate={setCurrentUser} onFinish={updated => {
         setCurrentUser(updated); setProfileTask(null);
       }} />}
       {!profileTask && activeTab === 'discover' && (
@@ -87,7 +87,8 @@ export function App() {
 
       {/* Tab 2: Curated Explore Flats */}
       {!profileTask && activeTab === 'explore' && (
-        <CuratedFlatsView currentUser={currentUser} />
+        <CuratedFlatsView key={currentUser.id} currentUser={currentUser} onManagePhotos={() => setProfileTask('media')}
+          onOpenMatches={() => { setSelectedMatch(null); setActiveTab('matches'); }} />
       )}
 
       {/* Tab 3: Roommate Reviews & Trust Network */}

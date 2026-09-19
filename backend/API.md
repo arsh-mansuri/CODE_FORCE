@@ -137,7 +137,9 @@ Profile/listing/session creation is one transaction; a failed signup creates non
 Email uniqueness is case-insensitive. Passwords are 10–128 characters.
 Initially `onboarding.complete` is false. Use the token to upload 3–6 profile photos
 and, for providers, 3–6 property photos before connecting and appearing in others'
-feeds. Browsing `/list` is available immediately. See section 9.
+people feeds. Browsing `/list` and `/listings` is available immediately. An active
+offering is published in Curated Flats once its property photos are ready, without
+waiting for personal-profile photos. See section 9.
 
 **POST `/auth/login`** — public.
 
@@ -244,6 +246,18 @@ is supported here too. A listing's `owner_id` is the profile ID to swipe
 on; it identifies the account offering the space, including a provider who is a
 tenant. Swipes are on people/providers, not listing IDs. Listings remain visible
 after a pass; the people feed hides previous swipes by default.
+
+The property's **Apply / Request Tour** action uses **POST `/swipe`** with
+`target_id = listing.owner_id`, `direction = "like"`, and a `note` naming the
+property and requesting a tour. The provider receives it in `/connections/requests`.
+Acceptance creates the usual mutual match and carries the tour note into chat.
+If the provider already liked the seeker, the tour request creates the match immediately.
+
+Provider signup and profile updates automatically create/update the same offering
+record. Active offerings with 3–6 property photos are included without requiring
+the provider's personal-profile gallery to be ready. New connections still require
+both accounts to finish photo onboarding. `listing.media.cover_photo_url` is the
+first property photo, never a personal-profile portrait.
 
 **GET `/listings/{listing_id}`**: your own listing or an eligible active listing.
 
@@ -469,6 +483,9 @@ No-match clauses are `info`, not certified safe. Lease text is not saved.
 Each gallery has **3–6 photos** and **zero or one video**. Account creation returns
 the credentials needed to upload; onboarding completes automatically when both
 required galleries are ready. No separate publish/approval request is needed.
+Property publication is independent: an active listing appears in Curated Flats
+as soon as its property gallery is ready. `onboarding.listing_status` is
+`needs_photos`, `published`, `paused`, or null when there is no offering.
 
 ### Upload 3–6 photos
 
@@ -491,6 +508,17 @@ curl -X POST http://localhost:8000/api/media/profile/photos \
 
 For the property, use `/api/media/property/photos` with room/kitchen/bathroom
 photos. The property must exist first. Profile and property galleries are separate.
+Signing up with an offering intent already creates this property using the signup
+details; editing that profile updates the same property rather than creating duplicates.
+
+Property photo uploads use local OpenCV face detection on decoded, oriented pixels.
+A detected face rejects the entire batch with **422 `property_photo_contains_face`**;
+the message directs portraits to the profile gallery. A failed detector returns
+**503 `photo_screening_unavailable`**, and no unchecked photos are saved. Models
+ship with the installed dependency: no API key or external image service is used.
+This is face detection, not identity or property verification, and can miss faces
+or flag a photo incorrectly. It applies to new photo uploads, not existing stored
+photos or videos.
 
 Images are EXIF-oriented, resized to a maximum 2048-pixel edge, and stored as JPEG
 without EXIF metadata. Each receives a separate thumbnail of up to 480 pixels.
@@ -535,7 +563,8 @@ Upload, gallery read, reorder, and delete responses have:
     "complete": false,
     "profile_photos_needed": 3,
     "property_photos_needed": 0,
-    "next_steps": ["Upload 3 more profile photo(s) via POST /api/media/profile/photos."]
+    "next_steps": ["Upload 3 more profile photo(s) via POST /api/media/profile/photos."],
+    "listing_status": null
   }
 }
 ```
@@ -554,6 +583,8 @@ The example shows an empty seeker's gallery. Every uploaded asset includes `id`,
 - **DELETE `/media/items/{media_id}`**: remove your media record, file, and
   thumbnail. If fewer than three photos remain, discovery hides the account and
   new likes are blocked until the gallery is completed. Existing match chats remain.
+  Curated Flats only depends on the property gallery: removing personal photos
+  does not hide an otherwise published property.
 - Switching an offering account to a seeker also removes the former property's
   gallery and files. Personal photos remain attached to the account.
 

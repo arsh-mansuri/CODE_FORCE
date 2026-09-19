@@ -51,6 +51,10 @@ def upload_photos(
     gallery needs 3–6 distinct photos to appear in discovery. Images are decoded,
     oriented, resized to at most 2048 px, and re-encoded as JPEG without EXIF.
     A 480 px thumbnail is also saved. The first photo is the cover; reorder later.
+    Property photos are screened locally for faces. If a face is detected, the
+    entire batch is rejected; personal portraits belong in the profile gallery.
+    An active offering appears in Curated Flats automatically after 3 property
+    photos, independently of the provider's personal-profile photo progress.
     """
     settings = request.app.state.settings
     prepared = []
@@ -58,7 +62,7 @@ def upload_photos(
         if target == MediaTarget.property and user.listing is None:
             raise problem(409, "offering_required", "Add your property through PUT /api/users/me before uploading its media.")
         for upload in files:
-            prepared.append(prepare_photo(upload, settings))
+            prepared.append(prepare_photo(upload, settings, target=target.value))
         lock_gallery(db, user, target.value)
         existing = [a for a in gallery_assets(user, target.value) if a.kind == "photo"]
         if len(existing) + len(prepared) > 6:

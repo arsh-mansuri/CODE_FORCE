@@ -5,6 +5,7 @@ import { EditorialPhotoCard } from './EditorialPhotoCard';
 import { HingePromptCard } from './HingePromptCard';
 import { BentoInfoGrid } from './BentoInfoGrid';
 import { StickyActionBar } from './StickyActionBar';
+import { MatchFitSummary } from '../MatchFitSummary';
 
 interface DiscoveryFeedProps {
   candidates: DiscoveryCandidate[];
@@ -95,6 +96,7 @@ export function DiscoveryFeed({ candidates, onSwipe, onSendNote }: DiscoveryFeed
 
       <div style={{ padding: '16px 20px 140px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <ProfileHeaderCard candidate={candidate} />
+        {candidate.matchDetails && <MatchFitSummary compatibility={candidate.matchDetails} compact />}
         {candidate.photos[0] && <EditorialPhotoCard photo={candidate.photos[0]} onLike={() => showToast('Liked photo!')} />}
         {candidate.prompts[0] && <HingePromptCard prompt={candidate.prompts[0]} onLike={() => showToast('Liked prompt!')} />}
         {candidate.photos[1] && <EditorialPhotoCard photo={candidate.photos[1]} onLike={() => showToast('Liked photo!')} />}

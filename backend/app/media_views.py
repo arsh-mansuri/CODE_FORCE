@@ -1,8 +1,8 @@
 """Shared media DTOs and discovery readiness, independent of upload processing."""
 from datetime import timezone
 
-from .models import MediaAsset, User
-from .schemas import MediaGallery, MediaResponse, MediaView, OnboardingStatus
+from .models import Listing, MediaAsset, User
+from .schemas import ListingPublicationStatus, MediaGallery, MediaResponse, MediaView, OnboardingStatus
 from .security import problem
 
 
@@ -32,6 +32,15 @@ def gallery_assets(user: User, target: str):
     return list(user.listing.media_assets) if user.listing else []
 
 
+def listing_publication_status(listing: Listing | None) -> ListingPublicationStatus | None:
+    if listing is None:
+        return None
+    if not listing.is_active:
+        return "paused"
+    photos = sum(asset.kind == "photo" for asset in listing.media_assets)
+    return "published" if 3 <= photos <= 6 else "needs_photos"
+
+
 def onboarding_status(user: User) -> OnboardingStatus:
     profile_count = sum(a.kind == "photo" for a in gallery_assets(user, "profile"))
     property_count = sum(a.kind == "photo" for a in gallery_assets(user, "property"))
@@ -45,6 +54,7 @@ def onboarding_status(user: User) -> OnboardingStatus:
     return OnboardingStatus(
         complete=not steps, profile_photos_needed=profile_needed,
         property_photos_needed=property_needed, next_steps=steps,
+        listing_status=listing_publication_status(user.listing),
     )
 
 

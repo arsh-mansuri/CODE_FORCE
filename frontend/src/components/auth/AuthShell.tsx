@@ -33,6 +33,7 @@ export function AuthShell({ currentUser, onAuthSuccess, onUserUpdate, onLogout, 
       user={currentUser}
       onFinish={user => { onUserUpdate(user); setEditingMedia(false); }}
       onLogout={onLogout}
+      onUserUpdate={onUserUpdate}
       editing={editingMedia}
     /> : <ProfilePage key={currentUser.id} user={currentUser} onUserUpdate={onUserUpdate}
       onEditMedia={() => setEditingMedia(true)} onLogout={onLogout} />}

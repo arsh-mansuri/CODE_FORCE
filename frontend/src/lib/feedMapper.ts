@@ -9,6 +9,7 @@ export function discoveryCandidate(item: Candidate): DiscoveryCandidate {
     id: item.id, name: item.full_name, age: item.age, verified: false,
     subtitle: [item.occupation, item.location.label].filter(Boolean).join(' · '),
     locationCity: item.location.city, locationArea: item.location.areas.join(', '), matchScore: item.match_score,
+    matchDetails: item.compatibility,
     chips: [...(rent ? [{ icon: 'payments', label: rent, isBudget: true }] : []),
       ...item.badges.map(label => ({ icon: 'home', label }))],
     photos: item.media.photos.map(photo => ({ id: photo.id, url: mediaUrl(photo.url), tag: photo.caption || item.title })),

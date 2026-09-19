@@ -181,7 +181,33 @@ separately because consumption is not known at discovery time. See the
    You can upload one photo at a time or send an entire gallery in one batch.
 3. Optionally upload one video per gallery to `/api/media/profile/video` or
    `/api/media/property/video` using field `file`.
-4. Once `onboarding.complete` is true, call **GET `/api/list`** for the swipe deck.
+4. Browse **GET `/api/list`** and **GET `/api/listings`** immediately; complete
+   personal and applicable property galleries before connecting.
+
+### Automatic property entries and photo screening
+
+Choosing an offering intent at signup (or when editing a profile) creates one
+property entry from the supplied offering details. Subsequent profile/listing
+edits update that same entry and retain its property photos. No separate create
+or publish request is needed. Providers start with property-photo upload in the UI.
+
+An active offering appears in **Curated Flats** after **3–6 property photos**,
+even if the provider has not finished their personal-profile gallery. Its first
+property photo is the cover. Personal portraits are never copied into this gallery.
+`user.onboarding.listing_status` (also in media responses) is `needs_photos`,
+`published`, `paused`, or null for a seeker. Removing property photos below the
+minimum hides the property again; removing personal photos does not unpublish it.
+People discovery and new connections still require full photo onboarding.
+
+New property uploads are checked using bundled OpenCV frontal/profile face
+detectors, locally on the server without API keys or runtime model downloads.
+Detected faces return **422 `property_photo_contains_face`** and reject the whole
+batch atomically, with guidance to use the profile gallery. A detector failure
+returns **503 `photo_screening_unavailable`** for retry, without saving unchecked
+photos. The check covers rotated images and uses decoded pixels, not filenames.
+It detects faces rather than identities or property authenticity; false positives
+and missed faces are possible. Existing stored media and videos are not rescanned.
+Install the updated `requirements.txt` when deploying this feature.
 
 Each card includes `match_score` (0–100), name, property title where relevant,
 display location, budget/rent details, lifestyle badges, ordered photos, a cover,
@@ -189,6 +215,23 @@ thumbnails, and optional video/poster metadata. A property provider's main galle
 shows the home; `profile_media` also shows the person. A seeker's location is
 explicitly labelled as their preferred search location, not their current address.
 `/api/users/feed` is an alias, and `/api/listings` also exposes a direct match score.
+
+Homes with preference differences remain available as alternatives, including when
+there are no exact matches. Results are ordered by descending `match_score` (use it
+directly as the match percentage). The `compatibility` object also includes:
+
+- `match_type`: `exact` when all evaluated preferences fit with a full score,
+  otherwise `alternative`. This describes evaluated fit, not a guarantee.
+- `matched_preferences`: the positive reasons to show under “What fits”.
+- `compromises`: unmet preferences and unconfirmed fit to show under “Trade-offs”.
+  Housing differences explain the requested area, rent, layout, move-in timing,
+  stay length, AC or landmark distance alongside what the property offers.
+
+The existing `reasons` array remains available. City, complementary intent, active
+listing and completed property photos determine Curated Flats eligibility. An explicit
+`min_match_score` filter is respected even if it leaves no results. Shared homes
+also account for lifestyle and household preferences; unknown lifestyle fit is
+disclosed rather than treated as perfect compatibility.
 
 Scores come from housing requirements and lifestyle compatibility. Photo count,
 video presence, and physical appearance are not scoring inputs. The API filters

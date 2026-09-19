@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { UserProfile } from '../../types/auth';
 import type { DiscoveryCandidate } from '../../types/discovery';
-import { fetchFeed, getStoredToken, swipeCandidate } from '../../lib/api';
-import { discoveryCandidate } from '../../lib/feedMapper';
+import type { MatchConnection } from '../../types/connections';
+import { fetchFeed, getStoredToken, postSwipe } from '../../lib/api';
+import { toDiscoveryCandidate } from '../../lib/discoveryApi';
 import { DISCOVERY_CANDIDATES } from '../../lib/discoveryData';
 import { DiscoveryFeed } from './DiscoveryFeed';
 import { historyFor, saveDiscoveryHistory, shouldRefine, type DiscoveryHistory } from '../../lib/discoveryHistory';
 import '../auth/Profile.css';
 
-export function DiscoveryScreen({ user, onCompleteProfile, onManagePhotos }: {
+export function DiscoveryScreen({ user, onCompleteProfile, onManagePhotos, onMatched }: {
   user: UserProfile; onCompleteProfile: () => void; onManagePhotos: () => void;
+  onMatched: (match: MatchConnection) => void;
 }) {
   const [items, setItems] = useState<DiscoveryCandidate[]>([]);
   const [history, setHistory] = useState(() => historyFor(user.id));
@@ -23,7 +25,7 @@ export function DiscoveryScreen({ user, onCompleteProfile, onManagePhotos }: {
     let active = true;
     const result = demo
       ? Promise.resolve({ items: DISCOVERY_CANDIDATES.filter(item => !historyFor(user.id).choices[item.id]), passes: 0 })
-      : fetchFeed().then(feed => ({ items: feed.items.map(discoveryCandidate), passes: feed.passed_count || 0 }));
+      : fetchFeed().then(feed => ({ items: feed.items.map(toDiscoveryCandidate), passes: feed.passed_count || 0 }));
     result.then(feed => {
       if (active) { setItems(feed.items); setPassedCount(feed.passes); }
     }).catch(err => { if (active) setError(err instanceof Error ? err.message : 'Unable to load suggestions.'); })
@@ -38,8 +40,12 @@ export function DiscoveryScreen({ user, onCompleteProfile, onManagePhotos }: {
     saveDiscoveryHistory(user.id, next);
   }
 
-  async function swipe(id: string, direction: 'like' | 'pass') {
-    if (!demo) await swipeCandidate(id, direction);
+  async function swipe(id: string, direction: 'like' | 'pass', note?: string) {
+    if (!demo) {
+      const result = await postSwipe(id, direction, note);
+      const person = items.find(item => item.id === id);
+      if (result.matched && result.match_id && person) onMatched({ id: result.match_id, person });
+    }
     saveHistory({ ...history, choices: { ...history.choices, [id]: direction } });
     if (direction === 'pass') setPassedCount(count => count + 1);
     setItems(previous => previous.filter(item => item.id !== id));
@@ -62,7 +68,7 @@ export function DiscoveryScreen({ user, onCompleteProfile, onManagePhotos }: {
     </section>}
     {loading ? <p className="profile-page" role="status">Finding your next possibilities…</p>
       : error ? <div className="profile-page"><p role="alert">{error}</p><button className="secondary-button" onClick={reload}>Try again</button></div>
-      : items.length ? <DiscoveryFeed candidates={items} onSwipe={swipe} />
+      : items.length ? <DiscoveryFeed candidates={items} onSwipe={swipe} onSendNote={(id, note) => swipe(id, 'like', note)} />
       : <div className="profile-page"><h2>You’re all caught up</h2><p>We’ve included available alternatives in your city, even when some preferences differ. Check back for new people or update your search.</p>
         <button type="button" className="primary-button" onClick={onCompleteProfile}>Edit / complete profile</button></div>}
   </>;

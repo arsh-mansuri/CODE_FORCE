@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import confetti from 'canvas-confetti';
 import type { DiscoveryCandidate } from '../../types/discovery';
 import { ProfileHeaderCard } from './ProfileHeaderCard';
 import { EditorialPhotoCard } from './EditorialPhotoCard';
@@ -36,18 +35,18 @@ export function DiscoveryFeed({ candidates, onSwipe, onSendNote }: DiscoveryFeed
     setSaving(true);
     try {
       if (note) {
-        await onSendNote?.(candidate.id, note);
+        if (onSendNote) await onSendNote(candidate.id, note);
+        else await onSwipe?.(candidate.id, direction, note);
       } else {
         await onSwipe?.(candidate.id, direction);
       }
       const message = note ? `Note sent to ${candidate.name}! 💬` : `${direction === 'pass' ? 'Passed on' : 'Liked'} ${candidate.name}`;
       showToast(message);
-      if (direction === 'like' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        void confetti({ particleCount: note ? 60 : 50, spread: note ? 70 : 60, origin: { y: note ? 0.7 : 0.85 }, colors: ['#923326', '#2a6a48', '#ffdad4', '#aceec4'] });
-      }
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      return true;
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Unable to save your choice. Try again.');
+      return false;
     } finally {
       busy.current = false;
       setSaving(false);
@@ -68,9 +67,10 @@ export function DiscoveryFeed({ candidates, onSwipe, onSendNote }: DiscoveryFeed
     event.preventDefault();
     const note = commentText.trim();
     if (!note || !candidate) return;
-    setCommentText('');
-    setCommentModalOpen(false);
-    await swipe('like', note);
+    if (await swipe('like', note)) {
+      setCommentText('');
+      setCommentModalOpen(false);
+    }
   };
 
   if (!candidate) {
@@ -79,7 +79,7 @@ export function DiscoveryFeed({ candidates, onSwipe, onSendNote }: DiscoveryFeed
         <span className="material-symbols-outlined" style={{ fontSize: '44px', color: 'var(--color-tertiary)' }}>person_search</span>
         <h3 className="font-serif" style={{ fontSize: '20px', fontWeight: 600, color: 'var(--color-on-surface)', margin: 0 }}>You&rsquo;re all caught up</h3>
         <p style={{ fontSize: '13px', margin: 0, maxWidth: '260px', color: 'var(--color-on-surface-variant)' }}>
-          No more profiles right now. Check your connection requests below when someone likes you with a note.
+          No more profiles right now. Head to Matches for connection requests and conversations.
         </p>
       </div>
     );
@@ -119,8 +119,8 @@ export function DiscoveryFeed({ candidates, onSwipe, onSendNote }: DiscoveryFeed
             </div>
 
             <form onSubmit={handleSendComment}>
-              <textarea rows={3} placeholder="Love your coffee beans rule! I make a mean pour-over too..." value={commentText} onChange={event => setCommentText(event.target.value)} autoFocus required style={{ marginBottom: '14px' }} />
-              <button type="submit" style={{ width: '100%', height: '48px', borderRadius: 'var(--radius-full)', background: 'var(--color-primary)', color: '#ffffff', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: 'var(--shadow-warm)' }}>
+              <textarea rows={3} maxLength={2000} placeholder="Love your coffee beans rule! I make a mean pour-over too..." value={commentText} onChange={event => setCommentText(event.target.value)} autoFocus required style={{ marginBottom: '14px' }} />
+              <button type="submit" disabled={saving || !commentText.trim()} style={{ width: '100%', height: '48px', borderRadius: 'var(--radius-full)', background: 'var(--color-primary)', color: '#ffffff', fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: 'var(--shadow-warm)' }}>
                 <span>Send Note & Connect</span>
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>send</span>
               </button>

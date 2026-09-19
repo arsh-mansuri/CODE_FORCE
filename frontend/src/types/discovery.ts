@@ -31,6 +31,7 @@ export interface BentoInfoData {
 export interface DiscoveryCandidate {
   id: string;
   name: string;
+  avatarUrl?: string;
   age: number;
   verified: boolean;
   subtitle: string;

@@ -1,6 +1,9 @@
-import type { DiscoveryCandidate, LifestyleChipData, PhotoCardData, PromptCardData, BentoInfoData, ApiCandidate } from '../types/discovery';
+import type { DiscoveryCandidate, LifestyleChipData, PhotoCardData, PromptCardData, BentoInfoData, ApiCandidate as DiscoveryApiCandidate } from '../types/discovery';
+import type { Candidate } from '../types/feed';
 import type { Lifestyle } from '../types/auth';
 import { mediaUrl } from './api';
+
+type ApiCandidate = DiscoveryApiCandidate | Candidate;
 
 const inr = (amount: number): string => `₹${amount.toLocaleString('en-IN')}`;
 
@@ -163,6 +166,7 @@ export function toDiscoveryCandidate(candidate: ApiCandidate): DiscoveryCandidat
   return {
     id: candidate.id,
     name: candidate.full_name,
+    avatarUrl: mediaUrl(candidate.profile_media.cover_photo_url || candidate.profile_media.photos[0]?.url),
     age: candidate.age,
     verified: true,
     subtitle: buildSubtitle(candidate),

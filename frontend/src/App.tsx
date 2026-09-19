@@ -1,31 +1,27 @@
 import { useEffect, useState } from 'react';
 import type { AuthResponse, UserProfile } from './types/auth';
 import type { NavTab } from './components/layout/BottomNav';
-import type { DiscoveryCandidate } from './types/discovery';
-import { getStoredUser, getStoredToken, getMe, logout, clearSession, getDiscoveryFeed, postSwipe } from './lib/api';
+import type { MatchConnection } from './types/connections';
+import { getStoredUser, getStoredToken, getMe, logout, clearSession } from './lib/api';
 import { TopAppBar } from './components/layout/TopAppBar';
 import { BottomNav } from './components/layout/BottomNav';
-import { DiscoveryFeed } from './components/discovery/DiscoveryFeed';
-import { ConnectionInbox } from './components/connections/ConnectionInbox';
+import { DiscoveryScreen } from './components/discovery/DiscoveryScreen';
+import { MatchesPage } from './components/connections/MatchesPage';
+import { MatchCelebration } from './components/connections/MatchCelebration';
 import { ProfileEditor } from './components/auth/ProfileEditor';
 import { MediaOnboarding } from './components/auth/MediaOnboarding';
 import { CuratedFlatsView } from './components/explore/CuratedFlatsView';
 import { AuthShell } from './components/auth/AuthShell';
-import { DISCOVERY_CANDIDATES } from './lib/discoveryData';
-import { toDiscoveryCandidate } from './lib/discoveryApi';
 import './App.css';
 
 export function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getStoredUser());
-  const [activeTab, setActiveTab] = useState<NavTab>('match');
+  const [activeTab, setActiveTab] = useState<NavTab>('discover');
+  const [newMatch, setNewMatch] = useState<MatchConnection | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<MatchConnection | null>(null);
   const [profileTask, setProfileTask] = useState<'details' | 'media' | null>(null);
   const [checkingSession, setCheckingSession] = useState(() => Boolean(getStoredToken()));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('reset-password') || '');
-  const [feed, setFeed] = useState<{ userId: string | null; candidates: DiscoveryCandidate[] }>({ userId: null, candidates: [] });
-
-  const userId = currentUser?.id ?? null;
-  const userOnboarded = Boolean(currentUser?.onboarding?.complete);
-  const candidateDeck = feed.userId === userId ? feed.candidates : DISCOVERY_CANDIDATES;
 
   useEffect(() => {
     let active = true;
@@ -35,49 +31,20 @@ export function App() {
     return () => { active = false; window.removeEventListener('hashchange', readResetToken); };
   }, []);
 
-  useEffect(() => {
-    if (!userId || !userOnboarded) return;
-    let active = true;
-    getDiscoveryFeed()
-      .then(feedData => {
-        if (!active) return;
-        setFeed(feedData === null
-          ? { userId, candidates: DISCOVERY_CANDIDATES }
-          : { userId, candidates: (feedData.items as Array<any>).map(toDiscoveryCandidate as any) });
-      })
-      .catch(() => {
-        if (active) setFeed({ userId, candidates: DISCOVERY_CANDIDATES });
-      });
-    return () => { active = false; };
-  }, [userId, userOnboarded]);
-
-  const loadFeed = () => {
-    getDiscoveryFeed()
-      .then(feedData => {
-        if (feedData === null) return;
-        setFeed({ userId, candidates: (feedData.items as Array<any>).map(toDiscoveryCandidate as any) });
-      })
-      .catch(() => { /* Keep the current deck when the backend is unreachable. */ });
-  };
-
-  const handleSwipe = (candidateId: string, direction: 'like' | 'pass', note?: string) => {
-    if (feed.userId !== userId) return;
-    const remaining = feed.candidates.filter(candidate => candidate.id !== candidateId);
-    setFeed({ userId, candidates: remaining });
-    void postSwipe(candidateId, direction, note);
-    if (remaining.length === 0) loadFeed();
-  };
-
   const handleAuthSuccess = (auth: AuthResponse) => {
     setCurrentUser(auth.user);
-    setActiveTab('match');
+    setActiveTab('discover');
+    setNewMatch(null);
+    setSelectedMatch(null);
     setProfileTask(null);
   };
 
   const handleLogout = () => {
     void logout();
     setCurrentUser(null);
-    setActiveTab('match');
+    setActiveTab('discover');
+    setNewMatch(null);
+    setSelectedMatch(null);
     setProfileTask(null);
   };
 
@@ -93,14 +60,14 @@ export function App() {
 
   return (
     <div className="propvibe-app" style={{ background: 'var(--color-surface)', minHeight: '100vh' }}>
-      {/* Tab 1: Roommate Match Discovery Feed (Default) */}
+      {/* Discover is the default; mutual connections live in Matches. */}
       {profileTask === 'details' && <ProfileEditor user={currentUser} onCancel={() => setProfileTask(null)} onSave={updated => {
         setCurrentUser(updated); setProfileTask(null);
       }} />}
       {profileTask === 'media' && <MediaOnboarding user={currentUser} editing onLogout={handleLogout} onFinish={updated => {
         setCurrentUser(updated); setProfileTask(null);
       }} />}
-      {!profileTask && activeTab === 'match' && (
+      {!profileTask && activeTab === 'discover' && (
         <>
           <TopAppBar
             city={currentUser.profile.search?.location.city || currentUser.offering?.location.city || 'Ahmedabad'}
@@ -108,11 +75,15 @@ export function App() {
             onFilterClick={() => setProfileTask('details')}
           />
           <main style={{ width: '100%' }}>
-            <DiscoveryFeed candidates={candidateDeck} onSwipe={handleSwipe} onSendNote={(candidateId, note) => handleSwipe(candidateId, 'like', note)} />
-            <ConnectionInbox onResolved={loadFeed} />
+            <DiscoveryScreen key={currentUser.id} user={currentUser} onMatched={setNewMatch}
+              onCompleteProfile={() => setProfileTask('details')} onManagePhotos={() => setProfileTask('media')} />
           </main>
         </>
       )}
+
+      {!profileTask && activeTab === 'matches' && <MatchesPage key={currentUser.id} user={currentUser}
+        selected={selectedMatch} onSelect={setSelectedMatch} onMatched={setNewMatch}
+        onDiscover={() => setActiveTab('discover')} />}
 
       {/* Tab 2: Curated Explore Flats */}
       {!profileTask && activeTab === 'explore' && (
@@ -224,7 +195,9 @@ export function App() {
       )}
 
       {/* Global Bottom Navigation */}
-      <BottomNav activeTab={activeTab} onTabChange={tab => { setActiveTab(tab); setProfileTask(null); }} />
+      <BottomNav activeTab={activeTab} onTabChange={tab => { setActiveTab(tab); setProfileTask(null); window.scrollTo(0, 0); }} />
+      {newMatch && <MatchCelebration user={currentUser} match={newMatch} onLater={() => setNewMatch(null)}
+        onMessage={() => { setSelectedMatch(newMatch); setNewMatch(null); setProfileTask(null); setActiveTab('matches'); window.scrollTo(0, 0); }} />}
     </div>
   );
 }

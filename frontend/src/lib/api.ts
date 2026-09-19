@@ -1,10 +1,10 @@
 import type { AuthResponse, LoginRequest, SignupRequest, UserProfile, MediaResponse } from '../types/auth';
 import type { FeedResponse } from '../types/feed';
-import type { ConnectionRequestsResponse, MatchView } from '../types/connections';
+import type { ChatMessage, ConnectionRequestsResponse, MatchView } from '../types/connections';
 import type { ListingFeed } from '../types/feed';
 import { DEMO_PERSONAS } from './demoPersonas';
 
-const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const rawApiUrl = (import.meta?.env?.VITE_API_URL || "https://childrens-after-janet-brass.trycloudflare.com/api" || '/api').replace(/\/$/, '');
 const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 const TOKEN_KEY = 'propvibe_token';
 const USER_KEY = 'propvibe_user';
@@ -224,6 +224,17 @@ export async function getConnectionRequests(limit = 20, offset = 0): Promise<Con
 
 export async function getMatches(limit = 20, offset = 0): Promise<MatchView[]> {
   return request<MatchView[]>(`/matches?limit=${limit}&offset=${offset}`, { headers: authorization() });
+}
+
+export function getMessages(matchId: string, limit = 100, offset = 0): Promise<ChatMessage[]> {
+  return request(`/matches/${encodeURIComponent(matchId)}/messages?limit=${limit}&offset=${offset}`, { headers: authorization() });
+}
+
+export function sendMessage(matchId: string, content: string): Promise<ChatMessage> {
+  return request(`/matches/${encodeURIComponent(matchId)}/messages`, {
+    method: 'POST', headers: { ...authorization(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: content.trim() }),
+  });
 }
 
 export async function fetchListings(params: { limit?: number; offset?: number; min_match_score?: number } = {}): Promise<ListingFeed> {

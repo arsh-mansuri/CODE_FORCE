@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type NavTab = 'match' | 'explore' | 'reviews' | 'profile';
+export type NavTab = 'discover' | 'matches' | 'explore' | 'reviews' | 'profile';
 
 interface BottomNavProps {
   activeTab: NavTab;
@@ -9,7 +9,8 @@ interface BottomNavProps {
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) => {
   const items: { id: NavTab; label: string; icon: string }[] = [
-    { id: 'match', label: 'Match', icon: 'favorite' },
+    { id: 'discover', label: 'Discover', icon: 'explore' },
+    { id: 'matches', label: 'Matches', icon: 'chat_bubble' },
     { id: 'explore', label: 'Explore', icon: 'apartment' },
     { id: 'reviews', label: 'Reviews', icon: 'verified_user' },
     { id: 'profile', label: 'Profile', icon: 'person' },
@@ -40,6 +41,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) 
           <button
             key={item.id}
             type="button"
+            aria-current={isActive ? 'page' : undefined}
             onClick={() => onTabChange(item.id)}
             style={{
               background: 'transparent',
@@ -50,7 +52,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) 
               justifyContent: 'center',
               gap: '2px',
               color: isActive ? 'var(--color-primary)' : 'var(--color-on-surface-variant)',
-              padding: '6px 16px',
+              padding: '6px 8px',
               cursor: 'pointer',
               transition: 'color 0.15s ease',
             }}

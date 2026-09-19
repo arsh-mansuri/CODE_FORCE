@@ -4,7 +4,7 @@ import type { ChatMessage, ConnectionRequestsResponse, MatchView } from '../type
 import type { ListingFeed, OfferingView } from '../types/feed';
 import { DEMO_PERSONAS } from './demoPersonas';
 
-const rawApiUrl = (import.meta.env.VITE_API_URL || 'https://childrens-after-janet-brass.trycloudflare.com/api').replace(/\/$/, '');
+const rawApiUrl = (import.meta.env.VITE_API_URL || 'https://stadium-administered-boats-minister.trycloudflare.com').replace(/\/$/, '');
 const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 const TOKEN_KEY = 'propvibe_token';
 const USER_KEY = 'propvibe_user';

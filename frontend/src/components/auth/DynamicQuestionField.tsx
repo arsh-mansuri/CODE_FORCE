@@ -3,6 +3,7 @@ import type { Question } from '../../types/onboarding';
 import { minimumDate } from '../../lib/dates';
 import { numberLimits } from '../../lib/onboardingValidation';
 import { INTENT_GROUPS, selectedIntents, toggleIntent } from '../../lib/intents';
+import { LANDMARK_OPTIONS } from '../../lib/questionOptions';
 
 interface DynamicQuestionFieldProps {
   question: Question;
@@ -72,12 +73,14 @@ export function DynamicQuestionField({ question: q, value, onChange, allAnswers,
     </div>}
     {q.input_type === 'boolean' && <div className="choice-grid">
       {[true, false].map(choice => <button key={String(choice)} type="button" className={`choice-button ${value === choice ? 'is-selected' : ''}`} aria-pressed={value === choice} onClick={() => onChange(choice)}>{choice ? 'Yes' : 'No'}</button>)}
-      {!q.required && <button type="button" className={`choice-button ${value == null ? 'is-selected' : ''}`} aria-pressed={value == null} onClick={() => onChange(null)}>No preference / not sure</button>}
+      {!q.required && !['offering.is_active', 'profile.search.ac_required'].includes(q.field) && <button type="button" className={`choice-button ${value == null ? 'is-selected' : ''}`} aria-pressed={value == null} onClick={() => onChange(null)}>No preference / not sure</button>}
     </div>}
     {q.input_type === 'scale' && <>
       <div className="scale-choices">{[1, 2, 3, 4, 5].map(level => <button key={level} type="button" className={`choice-button ${value === level ? 'is-selected' : ''}`} aria-pressed={value === level} onClick={() => onChange(level)}>{level}</button>)}</div>
       <div className="scale-labels"><span>Low / relaxed</span><span>High / frequent</span></div>
     </>}
+    {!q.required && (q.input_type === 'single_choice' || q.input_type === 'scale') && !['profile.gender', 'offering.furnishing'].includes(q.field) && value != null &&
+      <button type="button" className="text-button" onClick={() => onChange(null)}>Clear answer</button>}
     {q.input_type === 'list' && !structuredList && <>
       <input {...common} type="text" value={listText ?? (Array.isArray(value) ? value.join(', ') : value ?? '')} onChange={e => {
         setListText(e.target.value); onChange(e.target.value.split(',').map(item => item.trim()).filter(Boolean));
@@ -89,14 +92,14 @@ export function DynamicQuestionField({ question: q, value, onChange, allAnswers,
         const patch = (update: Record<string, unknown>) => onChange(value.map((row: object, i: number) => i === index ? { ...row, ...update } : row));
         const search = q.field === 'profile.search.location.nearby';
         return <div className="landmark-row" key={index}>
-          <label className="flow-label">Type<select value={item.kind} onChange={e => patch({ kind: e.target.value })}>{(q.options.length ? q.options : [{ value: 'public_transport', label: 'Public transport' }, { value: 'grocery', label: 'Grocery' }, { value: 'park', label: 'Park' }]).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label className="flow-label">Type<select value={item.kind} onChange={e => patch({ kind: e.target.value })}>{(q.options.length ? q.options : LANDMARK_OPTIONS).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label className="flow-label">Place name {search && '(optional)'}<input type="text" value={item.name || ''} maxLength={120} required={!search} onChange={e => patch({ name: e.target.value || null })} /></label>
           <label className="flow-label">{search ? 'Maximum distance (km)' : 'Distance (km)'}<input type="number" min={search ? 0.1 : 0} max={search ? 50 : 100} step="0.1" required value={item[search ? 'max_distance_km' : 'distance_km'] ?? ''} onChange={e => patch({ [search ? 'max_distance_km' : 'distance_km']: e.target.value === '' ? '' : Number(e.target.value) })} /></label>
-          {search && <label className="flow-label">Importance<select value={item.importance} onChange={e => patch({ importance: e.target.value })}><option value="preferred">Nice to have</option><option value="required">Must have</option></select></label>}
+          {search && <label className="flow-label">Importance<select value={item.importance} onChange={e => patch({ importance: e.target.value })}><option value="preferred">Nice to have</option><option value="required">High priority</option></select></label>}
           <button type="button" className="text-button" onClick={() => onChange(value.filter((_: unknown, i: number) => i !== index))}>Remove place</button>
         </div>;
       })}
-      <button type="button" className="secondary-button" disabled={(value?.length || 0) >= 10} onClick={() => onChange([...(value || []), { kind: 'public_transport', name: '', ...(q.field === 'profile.search.location.nearby' ? { max_distance_km: 3, importance: 'preferred' } : { distance_km: 1 }) }])}>Add a nearby place</button>
+      <button type="button" className="secondary-button" disabled={(value?.length || 0) >= (q.field === 'offering.nearby_landmarks' ? 30 : 10)} onClick={() => onChange([...(value || []), { kind: (q.options.length ? q.options : LANDMARK_OPTIONS)[0].value, name: null, ...(q.field === 'profile.search.location.nearby' ? { max_distance_km: 3, importance: 'preferred' } : { distance_km: 1 }) }])}>Add a nearby place</button>
     </div>}
     {q.input_type === 'object' && q.field === 'profile.search.budget' && <div className="paired-inputs">
       {(['minimum', 'maximum'] as const).map(key => <label className="flow-label" key={key}>{key === 'minimum' ? 'From (₹/month)' : 'Up to (₹/month)'}<input type="number" min={key === 'minimum' ? 0 : 0.01} max={10000000} step="0.01" required value={value?.[key] ?? ''} onChange={e => onChange({ ...value, [key]: e.target.value === '' ? undefined : Number(e.target.value) })} /></label>)}

@@ -1,7 +1,7 @@
 import type { AuthResponse, LoginRequest, SignupRequest, UserProfile, MediaResponse } from '../types/auth';
 import { DEMO_PERSONAS } from './demoPersonas';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "https://childrens-after-janet-brass.trycloudflare.com/api" || '/api').replace(/\/$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const TOKEN_KEY = 'propvibe_token';
 const USER_KEY = 'propvibe_user';
 const EXPIRY_KEY = 'propvibe_expiry';
@@ -196,4 +196,12 @@ export async function fetchOnboardingQuestions(): Promise<import('../types/onboa
     const { FALLBACK_QUESTIONNAIRE } = await import('./onboardingFallback');
     return FALLBACK_QUESTIONNAIRE;
   }
+}
+
+export function fetchFeed(): Promise<import('../types/feed').FeedResponse> {
+  return request('/users/feed?limit=100', { headers: authorization() });
+}
+
+export function swipeCandidate(target_id: string, direction: 'like' | 'pass'): Promise<import('../types/feed').SwipeResponse> {
+  return request('/swipe', { ...jsonPost({ target_id, direction }), headers: { ...authorization(), 'Content-Type': 'application/json' } });
 }

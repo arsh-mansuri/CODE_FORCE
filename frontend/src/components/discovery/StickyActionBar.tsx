@@ -1,6 +1,7 @@
 import React from 'react';
 
 interface StickyActionBarProps {
+  disabled?: boolean;
   onPass: () => void;
   onLike: () => void;
   onRespondPrompt: () => void;
@@ -10,6 +11,7 @@ export const StickyActionBar: React.FC<StickyActionBarProps> = ({
   onPass,
   onLike,
   onRespondPrompt,
+  disabled = false,
 }) => {
   return (
     <div
@@ -32,6 +34,7 @@ export const StickyActionBar: React.FC<StickyActionBarProps> = ({
       <button
         type="button"
         onClick={onPass}
+        disabled={disabled}
         style={{
           pointerEvents: 'auto',
           width: '50px',
@@ -57,6 +60,7 @@ export const StickyActionBar: React.FC<StickyActionBarProps> = ({
       <button
         type="button"
         onClick={onRespondPrompt}
+        disabled={disabled}
         style={{
           pointerEvents: 'auto',
           height: '50px',
@@ -88,6 +92,7 @@ export const StickyActionBar: React.FC<StickyActionBarProps> = ({
       <button
         type="button"
         onClick={onLike}
+        disabled={disabled}
         style={{
           pointerEvents: 'auto',
           width: '50px',

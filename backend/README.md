@@ -211,6 +211,40 @@ out incomplete galleries before ranking and supports `min_match_score`, `limit`,
 
 The complete multipart flow and frontend request examples are in [API.md](API.md#9-photo-and-video-upload-api).
 
+## Reset the four team accounts
+
+From `backend/`, run:
+
+```bash
+uv run --no-project python seed_team.py
+```
+
+Or use `python seed_team.py` with the backend virtual environment activated.
+The script uses the same `DATABASE_URL` and `MEDIA_ROOT` configuration as the API.
+
+Every run recreates these four accounts with the demo password **`1234567890`**:
+
+- `kofworld85@gmail.com`
+- `rc.rishi.pc@gmail.com`
+- `rctest1@gmail.com`
+- `arsh2.mansuri2@gmail.com`
+
+All four search for roommates in Ahmedabad with overlapping budgets, areas,
+property types, and freshly generated future move-in dates. Their shared lifestyle
+answers give each pair a 100% compatibility score, while room priorities differ.
+Three labelled demo illustrations per person complete photo onboarding.
+
+**This is a full reset of those four accounts:** IDs change, profile edits and
+uploads are replaced, and their sessions, swipes, matches/chats, listings, password
+reset requests, deletion requests, and saved rent sessions are removed. Other
+accounts remain; connections involving a reset account are removed. Replacement
+is transactional, and old uploads are removed only after a successful commit.
+
+Sign out and back in after running it. Each account starts with the other three
+eligible for its discovery deck (use the default discovery filters). Like each
+other to create matches and unlock chat. Running the script again clears those
+choices so you can repeat the demo.
+
 ## Five-minute demo
 
 Run `python seed_db.py` once. It creates these demo-only accounts:

@@ -4,6 +4,9 @@ import type { Questionnaire } from '../../types/onboarding';
 import { ApiError, fetchOnboardingQuestions, getStoredToken, updateProfile } from '../../lib/api';
 import { questionVisible, validateAnswer } from '../../lib/onboardingValidation';
 import { DynamicQuestionField } from './DynamicQuestionField';
+import { buildAirConditioning, buildElectricity } from '../../lib/onboardingMapper';
+import { preferencesSaved } from '../../lib/discoveryHistory';
+import './Profile.css';
 
 type ProfileUpdate = Pick<SignupRequest, 'profile' | 'offering'>;
 
@@ -33,8 +36,7 @@ function replaceField(value: unknown, [key, ...rest]: string[], next: unknown): 
 
 function editable(field: string) {
   if (field.startsWith('profile.')) return !['profile.intent', 'profile.intents'].includes(field);
-  return ['title', 'description', 'property_type', 'provider_relationship', 'location', 'monthly_rent', 'deposit', 'available_from',
-    'minimum_stay_months', 'available_spaces', 'furnishing', 'amenities', 'nearby_landmarks'].some(key => field === `offering.${key}`);
+  return field.startsWith('offering.');
 }
 
 export function ProfileEditor({ user, onSave, onCancel }: {
@@ -52,6 +54,7 @@ export function ProfileEditor({ user, onSave, onCancel }: {
   const errorMessage = useRef<HTMLParagraphElement>(null);
   const offline = getStoredToken()?.startsWith('offline_demo_');
   const answers = flatten(draft);
+  const original = flatten(initialDraft(user));
   const sections = questionnaire?.sections.map(section => ({ ...section,
     questions: section.questions.filter(question => editable(question.field) && questionVisible(question, answers)),
   })).filter(section => section.questions.length) || [];
@@ -76,28 +79,36 @@ export function ProfileEditor({ user, onSave, onCancel }: {
     if (busy || !questionnaire) return;
     for (const section of sections) {
       for (const question of section.questions) {
+        if (question.input_type === 'date' && answers[question.field] === original[question.field]) continue;
         const issue = validateAnswer(question, answers);
         if (issue) { showError(`${question.prompt} ${issue}`, question.field); return; }
       }
     }
     setBusy(true); setError('');
     try {
-      onSave(await updateProfile({ ...draft, profile: { ...draft.profile,
+      const offering = draft.offering ? { ...draft.offering,
+        electricity: buildElectricity(answers), air_conditioning: buildAirConditioning(answers),
+        available_spaces: draft.offering.kind === 'entire_home' ? 1 : draft.offering.available_spaces,
+      } : null;
+      const updated = await updateProfile({ offering, profile: { ...draft.profile,
+        intent: offering ? offering.kind === 'entire_home' ? 'offer_entire_home' : 'offer_shared_home' : draft.profile.intent,
         full_name: draft.profile.full_name.trim(), bio: draft.profile.bio.trim(),
         occupation: draft.profile.occupation?.trim() || null,
-        gender_description: draft.profile.gender === 'self_described' ? draft.profile.gender_description : null,
-      } }));
+        gender_description: draft.profile.gender === 'self_described' ? draft.profile.gender_description?.trim() || null : null,
+      } });
+      preferencesSaved(user.id);
+      onSave(updated);
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Unable to save your profile. Please try again.',
         err instanceof ApiError ? err.field?.replace(/^body\./, '') : undefined);
     } finally { setBusy(false); }
   }
 
-  return <form className="profile-page profile-editor" onSubmit={submit}>
-    <header className="profile-toolbar"><div><p className="eyebrow">Make it yours</p><h1 ref={heading} tabIndex={-1}>Edit profile</h1></div>
+  return <form className="profile-page profile-editor" onSubmit={submit} noValidate>
+    <header className="profile-toolbar"><div><p className="eyebrow">Make it yours</p><h1 ref={heading} tabIndex={-1}>Complete profile</h1></div>
       <button type="button" className="secondary-button" disabled={busy} onClick={onCancel}>Cancel</button>
     </header>
-    <p className="profile-editor-note">Update your details, then save to see your refreshed profile.{offline && ' Demo changes are saved on this device.'}</p>
+    <p className="profile-editor-note">Add as much as you like, at your own pace. Your preferences help us prioritize suggestions, not rule people out. Save whenever you’re ready.{offline && ' Demo changes are saved on this device.'}</p>
     {!questionnaire && <p role="status">Loading your details…</p>}
     <nav className="profile-editor-sections" aria-label="Profile sections">{sections.map(section =>
       <button key={section.id} type="button" aria-pressed={active?.id === section.id} disabled={busy}

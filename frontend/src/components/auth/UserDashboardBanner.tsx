@@ -135,7 +135,7 @@ export const UserDashboardBanner: React.FC<UserDashboardBannerProps> = ({
                 Cleanliness
               </span>
               <span style={{ fontSize: '13px', fontWeight: 600 }}>
-                Level {profile.lifestyle.cleanliness}/5
+                {profile.lifestyle.cleanliness == null ? 'Not answered yet' : `Level ${profile.lifestyle.cleanliness}/5`}
               </span>
             </div>
             <div
@@ -150,7 +150,7 @@ export const UserDashboardBanner: React.FC<UserDashboardBannerProps> = ({
                 Social Battery
               </span>
               <span style={{ fontSize: '13px', fontWeight: 600 }}>
-                Level {profile.lifestyle.social_energy}/5
+                {profile.lifestyle.social_energy == null ? 'Not answered yet' : `Level ${profile.lifestyle.social_energy}/5`}
               </span>
             </div>
             <div
@@ -165,7 +165,7 @@ export const UserDashboardBanner: React.FC<UserDashboardBannerProps> = ({
                 Sleep Rhythm
               </span>
               <span style={{ fontSize: '13px', fontWeight: 600, textTransform: 'capitalize' }}>
-                {profile.lifestyle.sleep_schedule.replace('_', ' ')}
+                {profile.lifestyle.sleep_schedule?.replace('_', ' ') || 'Not answered yet'}
               </span>
             </div>
             <div
@@ -180,7 +180,7 @@ export const UserDashboardBanner: React.FC<UserDashboardBannerProps> = ({
                 Food Routine
               </span>
               <span style={{ fontSize: '13px', fontWeight: 600, textTransform: 'capitalize' }}>
-                {profile.lifestyle.diet}
+                {profile.lifestyle.diet || 'Not answered yet'}
               </span>
             </div>
           </div>

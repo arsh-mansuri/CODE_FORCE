@@ -36,7 +36,7 @@ def test_each_signup_intent_is_complete_and_private(client, register, app, inten
 
 @pytest.mark.parametrize("mutation", [
     lambda b: b["profile"].pop("search"),
-    lambda b: b["profile"].pop("lifestyle"),
+    lambda b: b["profile"]["lifestyle"].update(cleanliness=6),
     lambda b: b["profile"].update(age=17),
     lambda b: b["profile"]["search"]["budget"].update(minimum=20000, maximum=10000),
     lambda b: b["profile"]["search"]["location"].update(pincodes=["38000"]),
@@ -83,7 +83,7 @@ def test_expired_session_is_rejected(client, app, register):
     assert client.get("/api/users/me", headers=headers).status_code == 401
 
 
-def test_feed_bilateral_gender_smoking_and_intent_filters(client, register):
+def test_feed_ranks_household_preferences_but_filters_incompatible_intents(client, register):
     me, headers, _ = register(mutate=lambda b: b["profile"].update(gender="woman"))
     compatible, _, _ = register(mutate=lambda b: b["profile"].update(gender="man"))
 
@@ -93,14 +93,17 @@ def test_feed_bilateral_gender_smoking_and_intent_filters(client, register):
     register(mutate=lambda b: b["profile"]["lifestyle"].update(smokes=True))
     register(Intent.seek_entire_home)
     response = client.get("/api/users/feed", headers=headers).json()
-    assert [p["id"] for p in response["items"]] == [compatible["user"]["id"]]
+    assert response["items"][0]["id"] == compatible["user"]["id"]
+    assert len(response["items"]) == 3
+    assert all(p["match_score"] < response["items"][0]["match_score"] for p in response["items"][1:])
+    assert any("Smoking preference differs" in reason for p in response["items"] for reason in p["compatibility"]["reasons"])
     assert response["items"][0]["compatibility"]["method"] == "weighted_cosine"
     assert "email" not in response["items"][0]
     assert "search" not in response["items"][0]
     assert "roommate_preferences" not in response["items"][0]
     assert like(client, headers, compatible["user"]["id"]).status_code == 200
-    assert client.get("/api/users/feed", headers=headers).json()["total"] == 0
-    assert client.get("/api/users/feed?include_seen=true", headers=headers).json()["total"] == 1
+    assert client.get("/api/users/feed", headers=headers).json()["total"] == 2
+    assert client.get("/api/users/feed?include_seen=true", headers=headers).json()["total"] == 3
 
 
 @pytest.mark.parametrize("kind", ["jain_derasar", "mosque", "temple"])
@@ -117,14 +120,16 @@ def test_whole_home_location_pincode_and_required_landmarks(client, register, ki
     provider, provider_headers, _ = register(Intent.offer_entire_home, home)
     register(Intent.offer_entire_home, lambda b: b["offering"].update(nearby_landmarks=[]))
     items = client.get("/api/listings", headers=headers).json()["items"]
-    assert len(items) == 1
+    assert len(items) == 2
+    assert items[0]["match_score"] > items[1]["match_score"]
+    assert any("not met or unconfirmed" in reason for reason in items[1]["compatibility"]["reasons"])
     assert items[0]["listing"]["owner_id"] == provider["user"]["id"]
     assert items[0]["compatibility"]["method"] == "housing_fit"
     assert any("provider-declared" in reason for reason in items[0]["compatibility"]["reasons"])
     assert client.get("/api/users/feed", headers=provider_headers).json()["total"] == 1
 
 
-def test_shared_home_filters_price_layout_date_stay_and_provider_preferences(client, register):
+def test_shared_home_prioritizes_price_layout_date_stay_and_provider_preferences(client, register):
     _, headers, _ = register(Intent.seek_room)
     good, _, _ = register(Intent.offer_shared_home)
     register(Intent.offer_shared_home, lambda b: b["offering"].update(monthly_rent=15001))
@@ -134,7 +139,9 @@ def test_shared_home_filters_price_layout_date_stay_and_provider_preferences(cli
     register(Intent.offer_shared_home, lambda b: b["profile"]["roommate_preferences"].update(genders=["woman"]))
     register(Intent.offer_entire_home)
     feed = client.get("/api/users/feed", headers=headers).json()
-    assert [p["id"] for p in feed["items"]] == [good["user"]["id"]]
+    assert feed["items"][0]["id"] == good["user"]["id"]
+    assert feed["total"] == 6
+    assert all(p["match_score"] < feed["items"][0]["match_score"] for p in feed["items"][1:])
 
 
 def test_mutual_swipes_idempotency_and_private_messaging(client, register, app):

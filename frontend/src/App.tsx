@@ -4,14 +4,16 @@ import type { NavTab } from './components/layout/BottomNav';
 import { getStoredUser, getStoredToken, getMe, logout, clearSession } from './lib/api';
 import { TopAppBar } from './components/layout/TopAppBar';
 import { BottomNav } from './components/layout/BottomNav';
-import { DiscoveryFeed } from './components/discovery/DiscoveryFeed';
+import { DiscoveryScreen } from './components/discovery/DiscoveryScreen';
+import { ProfileEditor } from './components/auth/ProfileEditor';
+import { MediaOnboarding } from './components/auth/MediaOnboarding';
 import { AuthShell } from './components/auth/AuthShell';
-import { DISCOVERY_CANDIDATES } from './lib/discoveryData';
 import './App.css';
 
 export function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getStoredUser());
   const [activeTab, setActiveTab] = useState<NavTab>('match');
+  const [profileTask, setProfileTask] = useState<'details' | 'media' | null>(null);
   const [checkingSession, setCheckingSession] = useState(() => Boolean(getStoredToken()));
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('reset-password') || '');
 
@@ -26,17 +28,19 @@ export function App() {
   const handleAuthSuccess = (auth: AuthResponse) => {
     setCurrentUser(auth.user);
     setActiveTab('match');
+    setProfileTask(null);
   };
 
   const handleLogout = () => {
     void logout();
     setCurrentUser(null);
     setActiveTab('match');
+    setProfileTask(null);
   };
 
   if (checkingSession && !resetToken) return <main className="auth-shell"><div className="flow-page"><p role="status">Getting your PropVibe ready…</p></div></main>;
 
-  if (!currentUser || !currentUser.onboarding.complete || resetToken) return <AuthShell
+  if (!currentUser || resetToken) return <AuthShell
     currentUser={currentUser} onAuthSuccess={handleAuthSuccess} onUserUpdate={setCurrentUser} onLogout={handleLogout}
     resetToken={resetToken} onResetDone={() => {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -47,24 +51,27 @@ export function App() {
   return (
     <div className="propvibe-app" style={{ background: 'var(--color-surface)', minHeight: '100vh' }}>
       {/* Tab 1: Roommate Match Discovery Feed (Default) */}
-      {activeTab === 'match' && (
+      {profileTask === 'details' && <ProfileEditor user={currentUser} onCancel={() => setProfileTask(null)} onSave={updated => {
+        setCurrentUser(updated); setProfileTask(null);
+      }} />}
+      {profileTask === 'media' && <MediaOnboarding user={currentUser} editing onLogout={handleLogout} onFinish={updated => {
+        setCurrentUser(updated); setProfileTask(null);
+      }} />}
+      {!profileTask && activeTab === 'match' && (
         <>
           <TopAppBar
-            city="Brooklyn, NY"
-            area="Bushwick"
-            onFilterClick={() => {
-              // Quick filter toggle toast or notification
-              alert('Filter: Bushwick & East Williamsburg • Budget: $1,200 - $2,000');
-            }}
+            city={currentUser.profile.search?.location.city || currentUser.offering?.location.city || 'Your city'}
+            area={currentUser.profile.search?.location.areas.join(', ') || currentUser.offering?.location.area || 'All neighbourhoods'}
+            onFilterClick={() => setProfileTask('details')}
           />
           <main style={{ width: '100%' }}>
-            <DiscoveryFeed candidates={DISCOVERY_CANDIDATES} />
+            <DiscoveryScreen key={currentUser.id} user={currentUser} onCompleteProfile={() => setProfileTask('details')} onManagePhotos={() => setProfileTask('media')} />
           </main>
         </>
       )}
 
       {/* Tab 2: Curated Explore Flats */}
-      {activeTab === 'explore' && (
+      {!profileTask && activeTab === 'explore' && (
         <div style={{ padding: '20px 20px 80px', width: '100%' }}>
           <header style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -179,7 +186,7 @@ export function App() {
       )}
 
       {/* Tab 3: Roommate Reviews & Trust Network */}
-      {activeTab === 'reviews' && (
+      {!profileTask && activeTab === 'reviews' && (
         <div style={{ padding: '20px 20px 80px', width: '100%' }}>
           <header style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
@@ -271,7 +278,7 @@ export function App() {
       )}
 
       {/* Tab 4: Profile / Auth */}
-      {activeTab === 'profile' && (
+      {!profileTask && activeTab === 'profile' && (
         <div style={{ paddingBottom: '70px', width: '100%' }}>
           <AuthShell
             currentUser={currentUser}
@@ -283,7 +290,7 @@ export function App() {
       )}
 
       {/* Global Bottom Navigation */}
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <BottomNav activeTab={activeTab} onTabChange={tab => { setActiveTab(tab); setProfileTask(null); }} />
     </div>
   );
 }

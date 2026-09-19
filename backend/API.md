@@ -59,13 +59,22 @@ preferences, offering, and media sections. Each question includes:
 - `show_when`: conditional form visibility. Every referenced field path must match
   one of its listed values before showing the question or enforcing its `required`
   flag. For example, ask for an electricity unit rate only after `per_kwh` is selected.
-- `used_for`: routing, hard filters, cosine, Irving rankings, or rent preparation.
+- `used_for`: routing, preference ranking, cosine, Irving rankings, or rent preparation.
 - Media prompts also provide `upload_endpoint`, `minimum_files`, `maximum_files`,
   `accepted_types`, `max_file_bytes`, and `max_duration_seconds` where applicable.
 
 Defaults, bounds, nested shapes, and cross-field rules are enforced by the signup
 schema, linked by `validation_schema`. `nearby` accepts objects with `kind`,
 optional `name`, `max_distance_km`, and `importance` (`preferred` or `required`).
+The legacy value `required` now means higher priority, not exclusion. Both nearby
+question fields provide all landmark kinds in `options`.
+
+The frontend asks ten signup questions: email, password, display name, age and
+goals, then five housing questions. Seekers provide city, budget, layouts and two
+move-in dates; providers give layout, owner/tenant relationship, location, rent
+and availability. The separate **Edit / complete profile** screen presents the
+remaining applicable questions, including conditional electricity/AC billing.
+Lifestyle can be null or a partial object; unanswered values remain unknown.
 
 The five signup intents are described in [README.md](README.md#five-signup-paths).
 Never send an empty `search` or `offering` object for an inapplicable intent;
@@ -127,7 +136,8 @@ The private `user` includes `id`, `email`, `profile`, `offering`, `created_at`,
 Profile/listing/session creation is one transaction; a failed signup creates none.
 Email uniqueness is case-insensitive. Passwords are 10–128 characters.
 Initially `onboarding.complete` is false. Use the token to upload 3–6 profile photos
-and, for providers, 3–6 property photos before discovery is enabled. See section 9.
+and, for providers, 3–6 property photos before connecting and appearing in others'
+feeds. Browsing `/list` is available immediately. See section 9.
 
 **POST `/auth/login`** — public.
 
@@ -176,12 +186,13 @@ endpoints do not run an automatic purge job or immediately delete account data.
 
 `/users/feed` is an alias with exactly the same parameters and response.
 
-Response: `{ "items": [Candidate], "total", "limit", "offset", "has_more", "next_offset" }`.
+Response: `{ "items": [Candidate], "total", "limit", "offset", "has_more", "next_offset", "passed_count" }`.
 `limit` is 1–100; `offset` is 0–10,000. The default hides anyone you have already
 swiped on. `include_seen=true` shows them again. `min_match_score` accepts 0–100.
 Cards sort by descending computed score, then ascending user UUID. Incomplete
-photo galleries are hidden; callers with incomplete galleries receive 409 and
-specific upload instructions. After swiping, the unseen set changes: fetch offset
+photo galleries are hidden; callers can browse before completing their own gallery.
+`passed_count` counts distinct accounts currently passed on. The frontend offers a
+dismissible preference-refinement prompt after two passes. After swiping, the unseen set changes: fetch offset
 0 to refill the deck rather than reusing an offset from that older result set.
 
 A candidate includes display ID/name/age/gender/bio/occupation, intent, public
@@ -217,8 +228,12 @@ inputs, not appearance-based ranking features. The explanation object remains:
 
 This illustrates the response shape, not a promise of a particular computed score.
 Whole-home candidates use `housing_fit` and `cosine_similarity: null`.
-Housing fit is `80 + 20 × fraction of preferred landmark requirements satisfied`;
-when none are requested the eligible home scores 100. All hard filters must pass.
+Housing fit is the weighted fraction of preferences satisfied: budget (4), timing
+(3), area (2), layout (1), minimum stay (1), requested AC (2), and each landmark
+(1 for preferred, 2 for high priority). Shared-living scores combine 55% housing fit
+and 45% lifestyle cosine, minus 8 points per distinct household preference difference,
+clamped to 0–100. Lifestyle compares only mutually answered fields; with no comparable
+answers the cosine is null and a neutral 50% lifestyle contribution is used.
 
 **GET `/listings?limit=20&offset=0`**
 
@@ -232,32 +247,27 @@ after a pass; the people feed hides previous swipes by default.
 
 **GET `/listings/{listing_id}`**: your own listing or an eligible active listing.
 
-### Filtering semantics
+### Eligibility and preference ranking
 
 - City and landmark/area names use case-insensitive, whitespace-normalised exact
   text. City is always required. Within it, listed areas **or** PIN codes are
   acceptable alternatives. An empty locality list means any part of the city.
-- A required property landmark must match kind, optional exact name, and maximum
-  declared distance. Preferred landmarks add explanations; for whole homes they
-  also affect housing-fit rank. They do not become lifestyle-vector dimensions.
-- Roommates searching together need overlapping budget ranges, move-in windows,
-  property types, and declared locality alternatives. There is no automatic
-  mapping from an area name to a PIN code; if both constrain different forms with
-  no shared alternative, compatibility cannot be established.
-- For searching-together pairs, required landmark distances await a chosen
+- Property landmarks compare kind, optional exact name, and maximum declared
+  distance. A difference lowers rank and is explained, rather than hiding the home.
+- Roommates searching together rank overlapping budgets, dates, layouts and localities
+  more highly. There is no automatic mapping from an area name to a PIN code.
+- For searching-together pairs, preferred landmark distances await a chosen
   property; the reason text explicitly says so. No imaginary distance is scored.
-- Offered rent must fit the seeker's range; layout must be selected; availability
-  must be on/before their latest move-in date. A home available earlier may wait
-  until the person's earliest date. Planned stay must meet minimum lease length.
-- `profile.search.ac_required` defaults to false. When true, properties need
-  `air_conditioning.available=true`; missing information and `available=false`
-  are excluded. This means installed AC the incoming tenant can access; inspect
-  `locations` to see whether it is in the bedroom or a shared space. For two people
-  searching together, AC is recorded as a requirement for their future home.
-- Smoking/pet restrictions and explicit gender/diet choices apply in **both**
-  directions for shared living. An undisclosed value is never guessed to satisfy
-  a specific disclosed gender/diet choice. Whole-home landlords' lifestyle and
-  roommate-gender preferences are not used for tenant selection.
+- Offered rent, layout, availability and minimum stay are priorities. Alternatives
+  remain available when preferences differ, with their differences explained.
+- `profile.search.ac_required` defaults to false. True prioritizes confirmed AC;
+  unknown or unavailable AC lowers rank. For searching-together pairs it is a
+  priority to discuss for the future home.
+- Smoking/pet and gender/diet preferences affect shared-living ranking in both
+  directions. Unanswered habits are not invented. Whole-home landlords' personal
+  lifestyle and roommate preferences are not used for tenant selection.
+- Complementary intent, same city and active listings remain eligibility rules.
+  Self cards, incomplete candidate galleries and previously swiped profiles remain hidden.
 
 ### Manage an offering
 

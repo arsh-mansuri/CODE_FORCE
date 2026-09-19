@@ -41,15 +41,13 @@ export function ProfilePage({ user, onUserUpdate, onEditMedia, onLogout }: Profi
   const chips: LifestyleChipData[] = [];
   if (search) chips.push({ icon: 'payments', label: `${money(search.budget.minimum)}–${money(search.budget.maximum)}/mo`, isBudget: true });
   if (offering) chips.push({ icon: 'payments', label: `${money(offering.monthly_rent)}/mo`, isBudget: true });
-  if (lifestyle) chips.push(
-    { icon: 'cleaning_services', label: `Cleanliness ${lifestyle.cleanliness}/5` },
-    { icon: lifestyle.sleep_schedule === 'early_bird' ? 'wb_sunny' : 'bedtime', label: words(lifestyle.sleep_schedule) },
-    { icon: 'restaurant', label: words(lifestyle.diet) },
-    { icon: 'work', label: words(lifestyle.work_style) },
-    { icon: 'groups', label: `Social energy ${lifestyle.social_energy}/5` },
-    { icon: lifestyle.smokes ? 'smoking_rooms' : 'smoke_free', label: lifestyle.smokes ? 'Smoker' : 'Non-smoker' },
-    { icon: 'pets', label: lifestyle.has_pets ? 'Has pets' : 'No pets' },
-  );
+  if (lifestyle?.cleanliness != null) chips.push({ icon: 'cleaning_services', label: `Cleanliness ${lifestyle.cleanliness}/5` });
+  if (lifestyle?.sleep_schedule) chips.push({ icon: 'bedtime', label: words(lifestyle.sleep_schedule) });
+  if (lifestyle?.diet) chips.push({ icon: 'restaurant', label: words(lifestyle.diet) });
+  if (lifestyle?.work_style) chips.push({ icon: 'work', label: words(lifestyle.work_style) });
+  if (lifestyle?.social_energy != null) chips.push({ icon: 'groups', label: `Social energy ${lifestyle.social_energy}/5` });
+  if (lifestyle?.smokes != null) chips.push({ icon: 'smoke_free', label: lifestyle.smokes ? 'Smoker' : 'Non-smoker' });
+  if (lifestyle?.has_pets != null) chips.push({ icon: 'pets', label: lifestyle.has_pets ? 'Has pets' : 'No pets' });
 
   function closeEditor() {
     setEditing(false);
@@ -65,7 +63,7 @@ export function ProfilePage({ user, onUserUpdate, onEditMedia, onLogout }: Profi
       <div><p className="eyebrow">Your PropVibe</p><h1>Your profile</h1></div>
       <div className="profile-top-actions">
         <button ref={editButton} type="button" className="primary-button" onClick={() => { setSaved(false); setEditing(true); }}>
-          <span className="material-symbols-outlined" aria-hidden="true">edit</span>Edit profile
+          <span className="material-symbols-outlined" aria-hidden="true">edit</span>Edit / complete profile
         </button>
         <button type="button" className="secondary-button" onClick={onEditMedia}><span className="material-symbols-outlined" aria-hidden="true">photo_library</span>Manage photos & videos</button>
       </div>

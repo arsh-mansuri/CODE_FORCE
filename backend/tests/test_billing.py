@@ -103,14 +103,15 @@ def test_billing_is_saved_and_returned_in_cards_listings_and_updates(client, reg
     assert client.get("/api/listings/me", headers=headers).json()["air_conditioning"]["rate_per_hour"] == 20
 
 
-def test_ac_requirement_filters_unknown_and_unavailable_properties_and_revokes_changed_match(client, register):
+def test_ac_priority_ranks_alternatives_without_revoking_connections(client, register):
     seeker, hs, _ = register(Intent.seek_room, mutate=lambda b: b["profile"]["search"].update(ac_required=True))
     good, hg, body = register(Intent.offer_shared_home)
     register(Intent.offer_shared_home, mutate=lambda b: b["offering"].update(air_conditioning={"available": False}))
     register(Intent.offer_shared_home, mutate=lambda b: b["offering"].pop("air_conditioning"))
     for path in ("/api/list", "/api/listings"):
         response = client.get(path, headers=hs).json()
-        assert response["total"] == 1
+        assert response["total"] == 3
+        assert response["items"][0]["match_score"] > response["items"][1]["match_score"]
     card = client.get("/api/list", headers=hs).json()["items"][0]
     assert card["id"] == good["user"]["id"]
     assert any("AC is available" in reason for reason in card["compatibility"]["reasons"])
@@ -118,9 +119,11 @@ def test_ac_requirement_filters_unknown_and_unavailable_properties_and_revokes_c
     assert client.post("/api/swipe", headers=hg, json={"target_id": seeker["user"]["id"], "direction": "like"}).json()["matched"] is True
     body["offering"]["air_conditioning"] = {"available": False}
     assert client.put("/api/listings/me", headers=hg, json=body["offering"]).status_code == 200
-    assert client.get("/api/list", headers=hs).json()["items"] == []
-    assert client.get("/api/matches", headers=hs).json() == []
-    assert client.post("/api/swipe", headers=hs, json={"target_id": good["user"]["id"], "direction": "like"}).status_code == 409
+    assert client.get("/api/list", headers=hs).json()["total"] == 2
+    matches = client.get("/api/matches", headers=hs).json()
+    assert len(matches) == 1
+    assert any("unavailable or unconfirmed" in reason for reason in matches[0]["other_user"]["compatibility"]["reasons"])
+    assert client.post("/api/swipe", headers=hs, json={"target_id": good["user"]["id"], "direction": "like"}).status_code == 200
 
 
 def test_legacy_listing_details_remain_unknown_and_no_ac_is_explicit(client, register, app):
@@ -150,7 +153,7 @@ def test_searching_together_keeps_ac_as_future_home_requirement(client, register
     register()
     card = client.get("/api/list", headers=headers).json()["items"][0]
     assert card["card_type"] == "person"
-    assert any("AC access is required" in reason for reason in card["compatibility"]["reasons"])
+    assert any("AC access is a priority" in reason for reason in card["compatibility"]["reasons"])
 
 
 def test_utility_onboarding_conditions_and_swagger(client):

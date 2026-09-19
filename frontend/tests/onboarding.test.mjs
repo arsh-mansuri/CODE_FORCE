@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { createElement } from 'react';
@@ -39,7 +40,8 @@ test('every supported goal combination has at most ten essential signup question
 });
 
 function python(code, input) {
-  return spawnSync(resolve('../backend/.venv/bin/python'), ['-c', code], { cwd: resolve('../backend'), input, encoding: 'utf8' });
+  const binary = process.platform === 'win32' ? 'python' : (existsSync(resolve('../backend/.venv/bin/python')) ? resolve('../backend/.venv/bin/python') : 'python3');
+  return spawnSync(binary, ['-c', code], { cwd: resolve('../backend'), input, encoding: 'utf8' });
 }
 
 test('offline questionnaire has all API fields, choices, visibility conditions and requirements', () => {

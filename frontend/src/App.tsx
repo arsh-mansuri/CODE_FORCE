@@ -7,6 +7,7 @@ import { BottomNav } from './components/layout/BottomNav';
 import { DiscoveryScreen } from './components/discovery/DiscoveryScreen';
 import { ProfileEditor } from './components/auth/ProfileEditor';
 import { MediaOnboarding } from './components/auth/MediaOnboarding';
+import { CuratedFlatsView } from './components/explore/CuratedFlatsView';
 import { AuthShell } from './components/auth/AuthShell';
 import './App.css';
 
@@ -60,8 +61,8 @@ export function App() {
       {!profileTask && activeTab === 'match' && (
         <>
           <TopAppBar
-            city={currentUser.profile.search?.location.city || currentUser.offering?.location.city || 'Your city'}
-            area={currentUser.profile.search?.location.areas.join(', ') || currentUser.offering?.location.area || 'All neighbourhoods'}
+            city={currentUser.profile.search?.location.city || currentUser.offering?.location.city || 'Ahmedabad'}
+            area={currentUser.profile.search?.location.areas.join(', ') || currentUser.offering?.location.area || 'Navrangpura'}
             onFilterClick={() => setProfileTask('details')}
           />
           <main style={{ width: '100%' }}>
@@ -72,117 +73,7 @@ export function App() {
 
       {/* Tab 2: Curated Explore Flats */}
       {!profileTask && activeTab === 'explore' && (
-        <div style={{ padding: '20px 20px 80px', width: '100%' }}>
-          <header style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <span className="material-symbols-outlined" style={{ color: 'var(--color-primary)', fontSize: '22px' }}>
-                apartment
-              </span>
-              <h2 className="font-serif" style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>
-                Curated Flats
-              </h2>
-            </div>
-            <p style={{ fontSize: '13px', color: 'var(--color-on-surface-variant)', margin: 0 }}>
-              Verified properties primed for Sperner Fair-Rent splitting in Brooklyn
-            </p>
-          </header>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div
-              style={{
-                background: 'var(--color-surface-container-lowest)',
-                borderRadius: 'var(--radius-xl)',
-                border: '1px solid var(--color-outline-variant)',
-                overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(32, 27, 23, 0.05)',
-              }}
-            >
-              <img
-                src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=900&auto=format&fit=crop&q=80"
-                alt="Bushwick Loft"
-                style={{ width: '100%', height: '180px', objectFit: 'cover' }}
-              />
-              <div style={{ padding: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <h3 className="font-serif" style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>
-                    Jefferson St Sunlit Loft
-                  </h3>
-                  <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-primary)' }}>
-                    $3,400/mo total
-                  </span>
-                </div>
-                <p style={{ fontSize: '12px', color: 'var(--color-on-surface-variant)', margin: '4px 0 12px' }}>
-                  2 Bed • 1.5 Bath • In-unit Laundry • 4 min to Morgan L
-                </p>
-                <div
-                  style={{
-                    background: 'var(--color-secondary-container)',
-                    color: 'var(--color-on-secondary-container)',
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--color-secondary)' }}>
-                    balance
-                  </span>
-                  <span>Sperner Fair Split: Master $1,850 · Corner $1,550</span>
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: 'var(--color-surface-container-lowest)',
-                borderRadius: 'var(--radius-xl)',
-                border: '1px solid var(--color-outline-variant)',
-                overflow: 'hidden',
-                boxShadow: '0 2px 8px rgba(32, 27, 23, 0.05)',
-              }}
-            >
-              <img
-                src="https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=900&auto=format&fit=crop&q=80"
-                alt="Williamsburg Duplex"
-                style={{ width: '100%', height: '180px', objectFit: 'cover' }}
-              />
-              <div style={{ padding: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <h3 className="font-serif" style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>
-                    Bedford Ave Exposed Brick Flat
-                  </h3>
-                  <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-primary)' }}>
-                    $4,200/mo total
-                  </span>
-                </div>
-                <p style={{ fontSize: '12px', color: 'var(--color-on-surface-variant)', margin: '4px 0 12px' }}>
-                  3 Bed • 2 Bath • Private Terrace • Bedford L
-                </p>
-                <div
-                  style={{
-                    background: 'var(--color-secondary-container)',
-                    color: 'var(--color-on-secondary-container)',
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                  }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--color-secondary)' }}>
-                    balance
-                  </span>
-                  <span>Sperner Fair Split: Balcony $1,550 · Master $1,450 · Den $1,200</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CuratedFlatsView currentUser={currentUser} />
       )}
 
       {/* Tab 3: Roommate Reviews & Trust Network */}
@@ -205,18 +96,18 @@ export function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {[
               {
-                author: 'Maya Lin (Previous Roommate)',
-                target: 'Elena Vance',
-                period: '2024–2025 in Crown Heights',
-                text: '“Elena was the dream flatmate. Kept the espresso setup spotless, paid her Splitwise share on the 1st without reminders, and is exceptionally mindful during WFH calls.”',
-                badges: ['Cleanliness 10/10', 'Quiet Hours', 'Splitwise Prompt'],
+                author: 'Priya Sharma (Previous Flatmate)',
+                target: 'Ananya Desai',
+                period: '2024–2025 in Navrangpura, Ahmedabad',
+                text: '“Ananya was the dream flatmate. Kept the balcony chai garden spotless, split Torrent Power bills on the 1st via UPI without reminders, and is exceptionally mindful during WFH calls.”',
+                badges: ['Cleanliness 10/10', 'Quiet Hours', 'UPI Prompt'],
               },
               {
-                author: 'David Chen',
-                target: 'Elena Vance',
-                period: '2023–2024 in Greenpoint',
-                text: '“Super respectful of private space, easygoing about grocery sharing, and hosted calm Sunday morning vinyl sessions. Couldn’t recommend her more highly.”',
-                badges: ['Verified Leaseholder', 'Sublease Graduate'],
+                author: 'Aarav Shah',
+                target: 'Ananya Desai',
+                period: '2023–2024 in Bodakdev',
+                text: '“Super respectful of private space, shared delicious home-cooked meals, and hosted calm Sunday morning acoustic sessions. Couldn’t recommend her more highly.”',
+                badges: ['Verified Leaseholder', 'Polite & Mindful'],
               },
             ].map((review, i) => (
               <div

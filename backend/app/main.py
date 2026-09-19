@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException
 from .config import Settings
 from .database import Base, make_engine, session_factory
 from .media_routes import router as media_router
-from .routes import router
+from .routes import router, feed, swipe, listings
 from .upload_limits import UploadLimitMiddleware
 
 
@@ -120,4 +120,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(router)
     app.include_router(media_router)
+    app.add_api_route("/list", feed, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/users/feed", feed, methods=["GET"], include_in_schema=False)
+    app.add_api_route("/swipe", swipe, methods=["POST"], include_in_schema=False)
+    app.add_api_route("/listings", listings, methods=["GET"], include_in_schema=False)
     return app

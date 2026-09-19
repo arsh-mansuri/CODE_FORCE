@@ -148,3 +148,19 @@ export interface FeedQueryParams {
   include_seen?: boolean;
   min_match_score?: number;
 }
+
+export interface ListingFeedItem {
+  listing: OfferingView;
+  compatibility: Compatibility;
+  match_score: number;
+  provider_name: string;
+}
+
+export interface ListingFeed {
+  items: ListingFeedItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+  next_offset: number | null;
+}
